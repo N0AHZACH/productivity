@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "docpilot"
+version = "0.1.0"
+description = "Autonomous, schema-driven business document agent"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "openai>=1.52",
+    "python-docx>=1.1",
+    "tenacity>=9.0",
+    "structlog>=24.4",
+    "httpx>=0.27",
+    "sse-starlette>=2.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.7",
+    "mypy>=1.13",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+"app.prompts" = ["*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = []
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_return_any = true
+warn_unused_ignores = true
+no_implicit_optional = true
+ignore_missing_imports = true
+check_untyped_defs = true
+exclude = ["scripts/"]
