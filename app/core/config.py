@@ -59,6 +59,15 @@ class Settings(BaseSettings):
         """Authentication is enabled whenever at least one API key is configured."""
         return bool(self.api_key_set)
 
+    @property
+    def primary_provider_missing_key(self) -> bool:
+        """Return whether the primary provider requires an unset API key."""
+        if self.primary_provider == "groq":
+            return not self.groq_api_key.strip()
+        if self.primary_provider == "gemini":
+            return not self.gemini_api_key.strip()
+        return False
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

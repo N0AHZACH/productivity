@@ -1,10 +1,15 @@
 .venv
 .git
 .gitignore
+.env
 .pytest_cache
 .mypy_cache
 .ruff_cache
+__pycache__
+*.py[cod]
+*.egg-info
 data
+dist
+build
 examples/out
 tests
-*.md

@@ -21,14 +21,18 @@ def _load_request(path: Path) -> str:
 
 async def _run(example: Path) -> int:
     settings = get_settings()
-    if settings.primary_provider == "groq" and not settings.groq_api_key:
+    if settings.primary_provider_missing_key:
         print(
-            "GROQ_API_KEY is not set. Configure a provider in .env or set "
-            "PRIMARY_PROVIDER=ollama."
+            f"Provider '{settings.primary_provider}' requires an API key. "
+            "Configure it in .env or set PRIMARY_PROVIDER=ollama."
         )
         return 2
 
-    request = _load_request(example)
+    try:
+        request = _load_request(example)
+    except (OSError, ValueError) as exc:
+        print(f"Could not load request file: {exc}")
+        return 2
     container = Container.build(settings)
     print(f"Running {example.name} with {settings.primary_provider} ({settings.model_strong})...")
     try:
