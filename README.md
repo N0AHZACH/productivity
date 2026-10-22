@@ -23,10 +23,24 @@ Then open <http://localhost:8000/docs> or send:
 ```bash
 curl -X POST http://localhost:8000/agent \
   -H "Content-Type: application/json" \
-  -d '{"request":"Write a project plan for launching a customer support chatbot at a mid-size retail company, 3 months, team of 5."}'
+  --data @examples/standard_request.json
 ```
 
-Download the returned document URL. Generated files live under `data/documents/`.
+The response includes the run status, plan, assumptions, conflicts, reflection
+results, warnings, trace events, and `document_url`. Download the returned URL; the
+same file is stored under `data/documents/{run_id}.docx`.
+
+Ready-made requests:
+
+- `examples/standard_request.json` — project plan with budget and timeline tools
+- `examples/complex_request.json` — board decision memo with conflicting constraints
+
+Run either request from the command line:
+
+```bash
+python scripts/demo.py --example examples/standard_request.json
+python scripts/demo.py --example examples/complex_request.json
+```
 
 ## Local models
 
@@ -57,6 +71,13 @@ All tests use `FakeLLM` and never touch the network.
 - `POST /agent` — run the full agent; returns plan, assumptions, conflicts, reflection,
   warnings, trace, and a document link
 - `GET /documents/{run_id}` — download the generated `.docx`
+
+Set `API_KEYS=key1,key2` to require an `X-API-Key` header on `/agent` and
+`/documents/{run_id}`. With `API_KEYS` empty, authentication is disabled for local use.
+
+Runs are synchronous and bounded by `RUN_TIMEOUT_S`. Generated files contain no
+LLM-authored binary content: every block is validated Pydantic data and rendered by
+the deterministic `python-docx` renderer.
 
 Errors consistently return:
 

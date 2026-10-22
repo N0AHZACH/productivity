@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 
 from app.api.routes import router
+from app.container import Container
 from app.core.config import Settings, get_settings
 from app.core.errors import install_exception_handlers
 from app.core.logging import bind_request, clear_context, configure_logging, get_logger
@@ -21,14 +22,23 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     configure_logging(settings.log_level, json_logs=settings.log_json)
     settings.data_dir.mkdir(parents=True, exist_ok=True)
+    app.state.container.filestore.ensure()
     logger.info("application_started", env=settings.env)
     yield
     logger.info("application_stopped", env=settings.env)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    container: Container | None = None,
+) -> FastAPI:
     """Create the ASGI application."""
-    resolved_settings = settings or get_settings()
+    if container is None:
+        resolved_settings = settings or get_settings()
+        container = Container.build(resolved_settings)
+    else:
+        resolved_settings = container.settings
     app = FastAPI(
         title="DocPilot",
         version="0.1.0",
@@ -36,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=_lifespan,
     )
     app.state.settings = resolved_settings
+    app.state.container = container
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next: object) -> Response:

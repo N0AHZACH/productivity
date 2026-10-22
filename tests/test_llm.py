@@ -195,7 +195,7 @@ def test_extract_json_handles_prose_and_balances_strings() -> None:
 
 
 def test_fake_by_schema_and_with_json() -> None:
-    fake = FakeLLM.with_schemas({Pong: [{"pong": "one"}, {"pong": "two"}]})
+    fake = FakeLLM.by_schema({Pong: [{"pong": "one"}, {"pong": "two"}]})
     first = asyncio.run(fake.complete_json([], Pong))
     second = asyncio.run(fake.complete_json([], Pong))
     assert (first.pong, second.pong) == ("one", "two")

@@ -323,6 +323,30 @@ async def test_reflection_caps_loops_and_promotes_remaining_major_issues() -> No
 
 
 @pytest.mark.asyncio
+async def test_unresolved_critic_issue_is_not_lost_on_later_clean_loop() -> None:
+    state = _make_state()
+
+    async def writer(*args: Any, **kwargs: Any) -> SectionDraft:
+        raise AssertionError("a document-wide issue has no section to rewrite")
+
+    issue = Issue(
+        section_id=None,
+        severity="major",
+        description="The document omits the required approval signature block.",
+    )
+    llm = FakeLLM.with_schemas(
+        {CriticReview: {"passed": False, "issues": [issue.model_dump(mode="json")]}}
+    )
+    await reflect(
+        state, llm, _settings(mode="always", loops=2), writer, lambda *args, **kwargs: None
+    )
+
+    assert len(state.reflection) == 2
+    assert all(report.passed is False for report in state.reflection)
+    assert any("approval signature block" in warning for warning in state.warnings)
+
+
+@pytest.mark.asyncio
 async def test_auto_reviews_complex_documents_even_when_checks_pass() -> None:
     state = _make_state()
     assert state.analysis is not None

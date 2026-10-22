@@ -60,12 +60,16 @@ def _dedupe(issues: list[Issue]) -> list[Issue]:
     seen: set[tuple[str | None, str]] = set()
     unique: list[Issue] = []
     for issue in issues:
-        key = (issue.section_id, issue.description.strip())
+        key = _issue_key(issue)
         if key in seen:
             continue
         seen.add(key)
         unique.append(issue)
     return unique
+
+
+def _issue_key(issue: Issue) -> tuple[str | None, str]:
+    return (issue.section_id, issue.description.strip())
 
 
 def _critic_context(state: AgentState, spec: DocumentSpec) -> str:
@@ -342,8 +346,11 @@ async def reflect(
 
     major_after: list[Issue] = []
     unresolved_after: list[Issue] = []
+    carried: list[Issue] = []
     for loop in range(1, settings.max_reflection_loops + 1):
-        issues = run_checks(state.spec, state.plan, state.analysis)
+        issues = _dedupe(
+            [*run_checks(state.spec, state.plan, state.analysis), *carried]
+        )
         should_review = settings.reflection_llm_mode == "always" or (
             settings.reflection_llm_mode == "auto"
             and (
@@ -351,9 +358,11 @@ async def reflect(
                 or (state.analysis.complexity or "").strip().lower() == "complex"
             )
         )
+        critic_issues: list[Issue] = []
         if should_review:
             try:
-                issues.extend(await _critic_issues(state, state.spec, llm))
+                critic_issues = await _critic_issues(state, state.spec, llm)
+                issues.extend(critic_issues)
             except (LLMOutputInvalid, LLMProviderError) as exc:
                 logger.warning("critic_unavailable", error=str(exc))
                 state.warnings.append(f"LLM critic was unavailable: {exc}")
@@ -380,8 +389,16 @@ async def reflect(
             for issue in run_checks(state.spec, state.plan, state.analysis)
             if issue.severity.lower() == "major"
         ]
+        deterministic_keys = {_issue_key(issue) for issue in major_after}
+        critic_keys = {_issue_key(issue) for issue in critic_issues}
+        unresolved = [
+            issue
+            for issue in unresolved
+            if _issue_key(issue) in deterministic_keys or _issue_key(issue) in critic_keys
+        ]
         unresolved_after = unresolved
-        passed = not major_after and not unresolved
+        carried = _dedupe([*major_after, *unresolved])
+        passed = not carried
         report = ReflectionReport(
             loop=loop,
             passed=passed,

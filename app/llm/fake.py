@@ -29,13 +29,13 @@ class FakeLLM:
     """Queue-backed LLM double supporting call-order or schema-based routing."""
 
     responses: list[Any] = field(default_factory=list)
-    by_schema: dict[type[BaseModel], Any] = field(default_factory=dict)
+    schema_responses: dict[type[BaseModel], Any] = field(default_factory=dict)
     calls: list[FakeCall] = field(default_factory=list)
     _response_index: int = 0
     _schema_indices: dict[type[BaseModel], int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        self.by_schema = dict(self.by_schema)
+        self.schema_responses = dict(self.schema_responses)
 
     @classmethod
     def with_json(cls, *objects: BaseModel | dict[str, Any]) -> "FakeLLM":
@@ -47,9 +47,14 @@ class FakeLLM:
         return cls(responses=payloads)
 
     @classmethod
-    def with_schemas(cls, mapping: dict[type[BaseModel], Any]) -> "FakeLLM":
+    def by_schema(cls, mapping: dict[type[BaseModel], Any]) -> "FakeLLM":
         """Build a schema-routed fake for orchestration tests."""
-        return cls(by_schema=mapping)
+        return cls(schema_responses=mapping)
+
+    @classmethod
+    def with_schemas(cls, mapping: dict[type[BaseModel], Any]) -> "FakeLLM":
+        """Backward-compatible alias for :meth:`by_schema`."""
+        return cls.by_schema(mapping)
 
     def _next_generic(self) -> Any:
         if self._response_index >= len(self.responses):
@@ -61,11 +66,11 @@ class FakeLLM:
     def _next_for_schema(
         self, schema: type[BaseModel], messages: list[dict[str, str]]
     ) -> Any:
-        if schema not in self.by_schema:
+        if schema not in self.schema_responses:
             if self.responses:
                 return self._next_generic()
             raise AssertionError(f"FakeLLM has no response configured for {schema.__name__}")
-        configured = self.by_schema[schema]
+        configured = self.schema_responses[schema]
         if callable(configured) and not isinstance(configured, type):
             return configured(messages)
         items = configured if isinstance(configured, list) else [configured]

@@ -73,6 +73,7 @@ class AgentState(BaseModel):
     analysis: Analysis | None = None
     plan: TaskList | None = None
     spec: DocumentSpec | None = None
+    plan_source: str | None = None
     reflection: list[ReflectionReport] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     trace: list[TraceEvent] = Field(default_factory=list)

@@ -71,6 +71,16 @@ class RenderError(DocPilotError):
     http_status = 500
 
 
+class RunTimeout(DocPilotError):
+    code = "RUN_TIMEOUT"
+    http_status = 504
+
+
+class AgentFailed(DocPilotError):
+    code = "AGENT_FAILED"
+    http_status = 500
+
+
 class NotFound(DocPilotError):
     code = "NOT_FOUND"
     http_status = 404
