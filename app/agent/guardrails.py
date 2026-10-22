@@ -26,11 +26,7 @@ class GuardrailResult(BaseModel):
 
 
 def _strip_control_characters(text: str) -> str:
-    return "".join(
-        char
-        for char in text
-        if char in "\n\t" or unicodedata.category(char)[0] != "C"
-    )
+    return "".join(char for char in text if char in "\n\t" or unicodedata.category(char)[0] != "C")
 
 
 def check_request(text: str, settings: Settings) -> GuardrailResult:

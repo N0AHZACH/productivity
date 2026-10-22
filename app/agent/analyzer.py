@@ -88,10 +88,7 @@ def _default_assumption(item: str) -> str:
             "accountable project lead."
         )
     if any(word in lowered for word in ("audience", "reader", "stakeholder")):
-        return (
-            f"{clean} was not specified; assuming a mixed executive and operational "
-            "audience."
-        )
+        return f"{clean} was not specified; assuming a mixed executive and operational audience."
     return (
         f"{clean} was not provided; assuming a conservative default that is stated "
         "explicitly in the document and must be confirmed by the owner."

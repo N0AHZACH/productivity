@@ -24,9 +24,7 @@ logger = structlog.get_logger(__name__)
 PlanSource = Literal["llm", "fallback"]
 _PLAN_SOURCE: ContextVar[PlanSource] = ContextVar("plan_source", default="llm")
 
-_CONFLICT_PATTERN = re.compile(
-    r"trade[\s-]?offs?|\boptions?\b|prioriti[sz]", flags=re.IGNORECASE
-)
+_CONFLICT_PATTERN = re.compile(r"trade[\s-]?offs?|\boptions?\b|prioriti[sz]", flags=re.IGNORECASE)
 _FORBIDDEN_PATTERNS = (
     re.compile(r"\b(?:render|rendering|export|exporting|download)\b", re.IGNORECASE),
     re.compile(
@@ -51,9 +49,7 @@ def _template_covered(plan: TaskList, template_title: str) -> bool:
     if any(titles_match(task.section_title or "", template_title) for task in writers):
         return True
     topic_tokens = {
-        token
-        for token in re.findall(r"[a-z0-9]+", template_title.lower())
-        if len(token) > 3
+        token for token in re.findall(r"[a-z0-9]+", template_title.lower()) if len(token) > 3
     }
     for task in plan.tasks:
         description = task.description.lower()
@@ -69,9 +65,7 @@ def _forbidden_work(plan: TaskList) -> list[str]:
     for task in plan.tasks:
         combined = f"{task.title} {task.description}"
         if any(pattern.search(combined) for pattern in _FORBIDDEN_PATTERNS):
-            problems.append(
-                f"{task.id} plans rendering/exporting/file creation; that is automatic"
-            )
+            problems.append(f"{task.id} plans rendering/exporting/file creation; that is automatic")
     return problems
 
 
@@ -119,8 +113,7 @@ def validate_plan(plan: TaskList, registry: ToolRegistry, analysis: Analysis) ->
             )
 
     if analysis.conflicts and not any(
-        _CONFLICT_PATTERN.search(f"{task.title} {task.description}")
-        for task in writer_tasks
+        _CONFLICT_PATTERN.search(f"{task.title} {task.description}") for task in writer_tasks
     ):
         problems.append(
             "analysis lists conflicts, but no write_section task addresses trade-offs, "
@@ -169,9 +162,7 @@ async def plan(
 
     for round_index in range(3):
         try:
-            candidate = await llm.complete_json(
-                messages, TaskList, tier="strong", max_repairs=0
-            )
+            candidate = await llm.complete_json(messages, TaskList, tier="strong", max_repairs=0)
         except LLMOutputInvalid as exc:
             last_problems = [f"your previous output was not a valid TaskList: {exc}"]
             candidate = None
@@ -198,8 +189,7 @@ async def plan(
 
         correction = (
             "The plan failed validation. Fix every problem below and return a complete "
-            "TaskList JSON object only.\n\nProblems:\n- "
-            + "\n- ".join(last_problems)
+            "TaskList JSON object only.\n\nProblems:\n- " + "\n- ".join(last_problems)
         )
         if candidate is not None:
             messages = [
@@ -254,11 +244,7 @@ def _risk_keywords(analysis: Analysis) -> list[str]:
             *analysis.conflicts,
         ]
     )
-    tokens = [
-        token
-        for token in re.findall(r"[a-z0-9]+", text.lower())
-        if len(token) > 3
-    ]
+    tokens = [token for token in re.findall(r"[a-z0-9]+", text.lower()) if len(token) > 3]
     seen: list[str] = []
     for token in tokens:
         if token not in seen:
@@ -298,9 +284,7 @@ def _compare_tool_args() -> dict[str, Any]:
     }
 
 
-def _tool_task(
-    task_id: str, title: str, tool: str, args: dict[str, Any], acceptance: str
-) -> Task:
+def _tool_task(task_id: str, title: str, tool: str, args: dict[str, Any], acceptance: str) -> Task:
     return Task(
         id=task_id,
         title=title,
@@ -430,14 +414,12 @@ def fallback_plan(analysis: Analysis) -> TaskList:
     next_id = len(tool_tasks) + 1
     template = template_titles(analysis.doc_type)
     assumption_note = (
-        " Use these analysis assumptions where relevant: "
-        + " ".join(analysis.assumptions[:4])
+        " Use these analysis assumptions where relevant: " + " ".join(analysis.assumptions[:4])
         if analysis.assumptions
         else ""
     )
     conflict_note = (
-        " Address the listed conflicts directly using trade-offs, options, or "
-        "prioritization."
+        " Address the listed conflicts directly using trade-offs, options, or prioritization."
         if analysis.conflicts
         else ""
     )
