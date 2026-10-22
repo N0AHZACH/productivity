@@ -25,6 +25,8 @@ class Analysis(BaseModel):
     conflicts: list[str] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)
     complexity: str = "standard"
+    in_scope: bool = True
+    refusal_reason: str | None = None
 
 
 class Issue(BaseModel):
