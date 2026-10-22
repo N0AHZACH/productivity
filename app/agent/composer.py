@@ -164,6 +164,13 @@ def _executive_summary_blocks(composition: CompositionDraft, state: AgentState) 
                 text=f"Trade-off: {conflicts} Recommendation: {recommendation}",
             )
         )
+    else:
+        focus = (
+            composition.recommendation.strip()
+            if composition.recommendation and composition.recommendation.strip()
+            else f"Primary objective: {state.analysis.objective if state.analysis else ''}"
+        )
+        blocks.append(Callout(kind="info", text=focus))
     return blocks
 
 
