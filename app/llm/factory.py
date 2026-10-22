@@ -25,6 +25,7 @@ def _build_provider(
         max_concurrency=settings.max_concurrency,
         max_retries=settings.llm_max_retries,
         supports_json_mode=settings.llm_supports_json_mode,
+        reasoning_effort=settings.llm_reasoning_effort,
         usage_sink=usage_sink,
     )
 

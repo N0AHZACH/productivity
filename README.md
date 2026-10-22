@@ -53,6 +53,23 @@ ollama pull llama3.1:8b
 
 Then set `MODEL_FAST` and `MODEL_STRONG` in `.env`.
 
+## Free-tier providers
+
+Model IDs are provider-specific; change `MODEL_FAST` and `MODEL_STRONG` whenever
+you switch providers.
+
+- Groq: `openai/gpt-oss-20b` and `openai/gpt-oss-120b`
+- Gemini: `gemini-3.5-flash-lite` (or `gemini-3.5-flash` when available)
+- Ollama: IDs returned by `ollama list`
+
+Free tiers are rate-limited. For longer complex runs, raise `RUN_TIMEOUT_S` and
+lower `MAX_CONCURRENCY` to stay within provider limits; use `MAX_CONCURRENCY=1` for
+Groq's 8,000-TPM free tier. Keep `LLM_MAX_OUTPUT_TOKENS` low enough that the prompt
+plus reserved output tokens stays under the provider limit, and set
+`LLM_REASONING_EFFORT=low` for Groq gpt-oss reasoning models. Reflection is best-effort
+and bounded by `REFLECTION_TIMEOUT_S`; if it expires, the current validated draft is
+rendered with the unresolved review items in `warnings`.
+
 ## Development
 
 ```bash

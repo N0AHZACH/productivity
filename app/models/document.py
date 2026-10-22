@@ -86,6 +86,35 @@ class SectionDraft(BaseModel):
     heading: str
     blocks: list[Block] = Field(min_length=1)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_block_types(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        blocks = value.get("blocks")
+        if not isinstance(blocks, list):
+            return value
+        aliases = {
+            "bullet": "bullets",
+            "bullet-list": "bullets",
+            "bullet_list": "bullets",
+            "bulletlist": "bullets",
+            "unordered-list": "bullets",
+            "unordered_list": "bullets",
+            "ordered-list": "numbered",
+            "ordered_list": "numbered",
+            "numbered-list": "numbered",
+            "numbered_list": "numbered",
+        }
+        normalized = []
+        for block in blocks:
+            if isinstance(block, dict):
+                block_type = block.get("type")
+                if isinstance(block_type, str) and block_type in aliases:
+                    block = {**block, "type": aliases[block_type]}
+            normalized.append(block)
+        return {**value, "blocks": normalized}
+
 
 class DocumentSpec(BaseModel):
     """A complete, renderable document with no binary content."""

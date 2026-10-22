@@ -7,14 +7,28 @@ from typing import Any
 import structlog
 
 
+def _configure_utf8_stream(stream: Any) -> None:
+    reconfigure = getattr(stream, "reconfigure", None)
+    if not callable(reconfigure):
+        return
+    try:
+        reconfigure(encoding="utf-8", errors="backslashreplace")
+    except (OSError, ValueError):
+        return
+
+
 def configure_logging(level: str = "INFO", *, json_logs: bool = True) -> None:
     """Configure stdlib and structlog once for the application."""
+    _configure_utf8_stream(sys.stdout)
+    _configure_utf8_stream(sys.stderr)
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
         level=getattr(logging, level.upper(), logging.INFO),
         force=True,
     )
+    for noisy_logger in ("httpx", "httpcore", "openai"):
+        logging.getLogger(noisy_logger).setLevel(logging.WARNING)
     processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,

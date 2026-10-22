@@ -54,6 +54,7 @@ def _client(
     *,
     max_concurrency: int = 4,
     retry_delay: float = 0.0,
+    reasoning_effort: str | None = None,
     usage_sink: Any = None,
 ) -> tuple[OpenAICompatClient, FakeCompletions]:
     completions = FakeCompletions(handler)
@@ -65,6 +66,7 @@ def _client(
         model_strong="strong",
         max_concurrency=max_concurrency,
         max_retries=3,
+        reasoning_effort=reasoning_effort,
         retry_base_delay_s=retry_delay,
         usage_sink=usage_sink,
         client=fake,
@@ -176,6 +178,24 @@ async def test_concurrency_cap_is_respected() -> None:
     )
     assert completions.peak <= 2
     assert completions.peak == 2
+
+
+@pytest.mark.asyncio
+async def test_reasoning_effort_is_forwarded_only_when_configured() -> None:
+    captured: dict[str, Any] = {}
+
+    async def handler(**kwargs: Any) -> Any:
+        captured.update(kwargs)
+        return _completion('{"pong": "ok"}')
+
+    client, _ = _client(handler, reasoning_effort="low")
+    await client.complete_json([{"role": "user", "content": "ping"}], Pong)
+    assert captured["reasoning_effort"] == "low"
+
+    captured.clear()
+    client, _ = _client(handler)
+    await client.complete_json([{"role": "user", "content": "ping"}], Pong)
+    assert "reasoning_effort" not in captured
 
 
 @pytest.mark.asyncio

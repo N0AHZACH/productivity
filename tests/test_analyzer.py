@@ -106,6 +106,20 @@ async def test_missing_assumption_is_backfilled() -> None:
     assert "120,000 USD" in result.assumptions[0]
 
 
+@pytest.mark.asyncio
+async def test_existing_budget_assumption_prevents_conflicting_backfill() -> None:
+    analysis = Analysis(
+        doc_type=DocType.DECISION_MEMO,
+        objective="Replace billing.",
+        audience="Board",
+        missing_info=["Available budget"],
+        assumptions=["Budget not given; assuming 500,000 USD."],
+    )
+    llm = FakeLLM.with_schemas({Analysis: analysis})
+    result = await analyze("Write a decision memo.", [], llm)
+    assert result.assumptions == ["Budget not given; assuming 500,000 USD."]
+
+
 def test_guardrails_reject_empty_and_oversized() -> None:
     settings = Settings(max_request_chars=20)
     with pytest.raises(GuardrailRejected, match="empty"):

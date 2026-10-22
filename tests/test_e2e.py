@@ -282,6 +282,63 @@ class _SlowLLM(FakeLLM):
         raise AssertionError("timeout should cancel this call")
 
 
+class _SlowReflectionLLM(FakeLLM):
+    async def complete_json(
+        self,
+        messages: list[dict[str, str]],
+        schema: Any,
+        **kwargs: Any,
+    ) -> Any:
+        if schema is CriticReview:
+            await asyncio.sleep(0.2)
+        return await super().complete_json(messages, schema, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_reflection_timeout_renders_current_draft(tmp_path: Path) -> None:
+    analysis = _standard_analysis()
+    composition = CompositionDraft(
+        title="Customer Support Chatbot Project Plan",
+        subtitle="Twelve-week assisted launch",
+        executive_summary="The plan launches a focused assisted support pilot.",
+        recommendation="Start with a narrow pilot and expand after measured success.",
+    )
+    llm = _SlowReflectionLLM.by_schema(
+        {
+            Analysis: analysis,
+            TaskList: fallback_plan(analysis),
+            SectionDraft: _section_writer,
+            CompositionDraft: composition,
+            CriticReview: {"passed": True, "issues": []},
+        }
+    )
+    app = _app(
+        tmp_path,
+        llm,
+        reflection_llm_mode="always",
+        reflection_timeout_s=0.02,
+    )
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/agent",
+            json={"request": "Write a project plan for a support chatbot pilot."},
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        download = await client.get(payload["document_url"])
+
+    assert payload["status"] == "completed_with_warnings"
+    assert any("Reflection exceeded its time budget" in item for item in payload["warnings"])
+    reflection_events = [
+        event for event in payload["trace"] if event["stage"] == "reflection"
+    ]
+    assert [event["message"] for event in reflection_events] == ["Review timed out"]
+    assert download.status_code == 200
+    assert download.content.startswith(b"PK")
+
+
 @pytest.mark.asyncio
 async def test_run_timeout_returns_typed_error(tmp_path: Path) -> None:
     app = _app(tmp_path, _SlowLLM(), run_timeout_s=0.02)

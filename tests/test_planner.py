@@ -41,9 +41,11 @@ async def test_valid_plan_passes_untouched() -> None:
     analysis = _analysis()
     valid = fallback_plan(analysis)
     llm = FakeLLM.with_schemas({TaskList: valid})
-    result = await plan(analysis, default_registry(), llm, Settings())
+    settings = Settings(llm_max_output_tokens=2800)
+    result = await plan(analysis, default_registry(), llm, settings)
     assert result == valid
     assert len(llm.calls) == 1
+    assert llm.calls[0].max_tokens == 2800
     assert get_plan_source() == "llm"
 
 

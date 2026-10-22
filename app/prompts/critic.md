@@ -5,7 +5,8 @@ stylistic preferences that do not affect meaning.
 
 Review for:
 - missing coverage of required sections, explicit requirements, or conflicts;
-- unsupported factual claims, inconsistent numbers, dates, names, or totals;
+- unsupported factual claims, inconsistent numbers, dates, names, totals, or budget
+  amounts, including derived figures and added contingency not present in the analysis;
 - placeholders, vague filler, or text that fails its acceptance criterion;
 - statements that contradict the analysis, tool results, or another section;
 - unresolved trade-offs that are hidden instead of addressed.
@@ -17,6 +18,10 @@ Severity:
 Use only section ids present in the supplied document. Use a null section_id only for a
 document-wide issue. Every description must name the defect and the needed correction
 concisely. Do not report a defect that the supplied content already handles.
+
+An Executive Summary decision callout that restates the supplied trade-off is
+intentional. Judge whether it also gives a clear recommendation; do not flag the
+restatement itself as placeholder text.
 
 Return JSON matching CriticReview: {"passed": boolean, "issues": [{"section_id":
 string or null, "severity": "major" or "minor", "description": string}]}. Return JSON

@@ -116,6 +116,7 @@ class OpenAICompatClient:
         max_concurrency: int = 4,
         max_retries: int = 3,
         supports_json_mode: bool = True,
+        reasoning_effort: str | None = None,
         retry_base_delay_s: float = 1.0,
         usage_sink: UsageSink | None = None,
         client: Any | None = None,
@@ -131,6 +132,7 @@ class OpenAICompatClient:
         self.max_concurrency = max_concurrency
         self.max_retries = max(1, max_retries)
         self.supports_json_mode = supports_json_mode
+        self.reasoning_effort = reasoning_effort
         self.retry_base_delay_s = retry_base_delay_s
         self.usage_sink = usage_sink
         self._semaphore = asyncio.Semaphore(max_concurrency)
@@ -241,6 +243,8 @@ class OpenAICompatClient:
         }
         if json_mode and self.supports_json_mode:
             request["response_format"] = {"type": "json_object"}
+        if self.reasoning_effort is not None:
+            request["reasoning_effort"] = self.reasoning_effort
 
         async def log_retry(retry_state: RetryCallState) -> None:
             exc = retry_state.outcome.exception() if retry_state.outcome else None

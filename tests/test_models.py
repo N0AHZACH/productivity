@@ -16,6 +16,7 @@ from app.models.document import (
     PageBreak,
     Paragraph,
     Section,
+    SectionDraft,
     Table,
 )
 from app.models.plan import Task, TaskList
@@ -152,6 +153,19 @@ def test_discriminated_union_parses_every_block() -> None:
     ]
     assert parsed[0] == Heading(level=2, text="Heading")
     assert parsed[6] == PageBreak()
+
+
+def test_section_draft_normalizes_common_block_aliases() -> None:
+    draft = SectionDraft.model_validate(
+        {
+            "heading": "Plan",
+            "blocks": [
+                {"type": "bullet_list", "items": ["one", "two"]},
+                {"type": "ordered_list", "items": ["first", "second"]},
+            ],
+        }
+    )
+    assert [block.type for block in draft.blocks] == ["bullets", "numbered"]
 
 
 def test_schema_helper_is_json_serializable() -> None:

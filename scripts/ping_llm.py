@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.core.config import get_settings
 from app.core.errors import DocPilotError
+from app.core.logging import configure_logging
 from app.llm.factory import build_llm
 
 
@@ -15,6 +16,7 @@ class Ping(BaseModel):
 
 async def _run() -> int:
     settings = get_settings()
+    configure_logging(settings.log_level, json_logs=settings.log_json)
     if settings.primary_provider_missing_key:
         print(
             f"Provider '{settings.primary_provider}' requires an API key. "

@@ -148,19 +148,31 @@ class Orchestrator:
                 )
 
                 stage_started = time.perf_counter()
-                await reflect(
-                    state,
-                    self.container.llm,
-                    settings,
-                    write_section,
-                    emit,
-                )
-                emit(
-                    "reflection",
-                    "Review complete",
-                    loops=len(state.reflection),
-                    duration_ms=int((time.perf_counter() - stage_started) * 1000),
-                )
+                reflection_timed_out = False
+                try:
+                    async with asyncio.timeout(settings.reflection_timeout_s):
+                        await reflect(
+                            state,
+                            self.container.llm,
+                            settings,
+                            write_section,
+                            emit,
+                        )
+                except TimeoutError:
+                    reflection_timed_out = True
+                    message = (
+                        "Reflection exceeded its time budget; rendered the current draft "
+                        "with unresolved review items."
+                    )
+                    state.warnings.append(message)
+                    emit("reflection", "Review timed out", status="timed_out")
+                if not reflection_timed_out:
+                    emit(
+                        "reflection",
+                        "Review complete",
+                        loops=len(state.reflection),
+                        duration_ms=int((time.perf_counter() - stage_started) * 1000),
+                    )
 
                 stage_started = time.perf_counter()
                 content = await asyncio.to_thread(self.container.renderer.render, spec)

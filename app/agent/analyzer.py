@@ -54,6 +54,47 @@ _STOPWORDS = {
     "confirm",
     "confirmed",
 }
+_CATEGORY_TERMS = {
+    "compliance": (
+        "compliance",
+        "regulatory",
+        "data-protection",
+        "financial-control",
+        "policy",
+        "legal",
+    ),
+    "budget": ("budget", "cost", "funding", "price", "spend"),
+    "timeline": ("timeline", "deadline", "date", "schedule", "q1", "quarter", "week"),
+    "team": ("team", "staff", "headcount", "resource"),
+    "audience": ("audience", "reader", "stakeholder"),
+}
+
+
+def _category(text: str) -> str | None:
+    lowered = text.lower()
+    for category, terms in _CATEGORY_TERMS.items():
+        if any(term in lowered for term in terms):
+            return category
+    return None
+
+
+def _has_concrete_value(category: str, assumption: str) -> bool:
+    if category == "budget":
+        return bool(re.search(r"[$€£]|\b(?:USD|EUR|GBP)\b|\d", assumption))
+    if category == "timeline":
+        return bool(re.search(r"\d", assumption))
+    return True
+
+
+def _category_covered(item: str, assumptions: list[str]) -> bool:
+    item_category = _category(item)
+    if item_category is None:
+        return False
+    return any(
+        _category(assumption) == item_category
+        and _has_concrete_value(item_category, assumption)
+        for assumption in assumptions
+    )
 
 
 def _content_tokens(text: str) -> set[str]:
@@ -96,6 +137,8 @@ def _default_assumption(item: str) -> str:
 
 
 def _is_covered(item: str, assumptions: list[str]) -> bool:
+    if _category_covered(item, assumptions):
+        return True
     item_tokens = _content_tokens(item)
     if not item_tokens:
         return any(item.lower() in assumption.lower() for assumption in assumptions)

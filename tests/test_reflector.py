@@ -158,6 +158,36 @@ def test_budget_mismatch_is_detected() -> None:
     assert any(issue.section_id == "s_t6" for issue in issues)
 
 
+@pytest.mark.parametrize(
+    ("amount", "has_conflict"),
+    [("151,800.00", True), ("120,000.00", False)],
+)
+def test_budget_assumption_consistency(amount: str, has_conflict: bool) -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    state.spec.assumptions = [
+        "Available budget was not provided; assuming a working budget of 120,000 USD."
+    ]
+    risks = next(
+        section for section in state.spec.sections if section.heading == "Risks and Mitigations"
+    )
+    risks.blocks.append(
+        Paragraph(text=f"The working budget expectation of USD {amount} includes contingency.")
+    )
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+    budget_issues = [issue for issue in issues if "assumed budget" in issue.description]
+    unsupported = [issue for issue in issues if "not supported" in issue.description]
+
+    assert bool(budget_issues) is has_conflict
+    assert bool(unsupported) is has_conflict
+    if has_conflict:
+        assert budget_issues[0].section_id == risks.id
+        assert "151,800.00" in budget_issues[0].description
+        assert unsupported[0].section_id == risks.id
+        assert "151,800.00" in unsupported[0].description
+
+
 def test_timeline_dates_must_appear() -> None:
     state = _make_state()
     assert state.plan is not None and state.spec is not None and state.analysis is not None
@@ -283,6 +313,7 @@ async def test_reflection_reruns_failed_writer_for_missing_section() -> None:
     budget_task = next(task for task in state.plan.tasks if task.id == "t6")
     budget_task.status = TaskStatus.FAILED
     budget_task.error = "writer failed"
+    state.warnings.append("t6 (Budget and Resourcing) failed: writer failed")
     writer_calls: list[str] = []
 
     async def writer(task: Task, *args: Any, **kwargs: Any) -> SectionDraft:
@@ -298,6 +329,7 @@ async def test_reflection_reruns_failed_writer_for_missing_section() -> None:
     )
     assert budget_task.status is TaskStatus.DONE
     assert not any("Unresolved review issue" in warning for warning in state.warnings)
+    assert not any("t6 (Budget and Resourcing) failed" in warning for warning in state.warnings)
 
 
 @pytest.mark.asyncio

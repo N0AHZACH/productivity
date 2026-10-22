@@ -113,7 +113,7 @@ async def write_section(
         SectionDraft,
         tier="strong",
         temperature=0.25,
-        max_tokens=max(4096, min(8000, settings.max_request_chars)),
+        max_tokens=settings.llm_max_output_tokens,
     )
     if not draft.heading.strip():
         draft.heading = task.section_title or task.title

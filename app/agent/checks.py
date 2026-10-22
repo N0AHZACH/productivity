@@ -1,5 +1,6 @@
 """Fast deterministic document checks that never hallucinate."""
 
+import json
 import re
 from decimal import Decimal, InvalidOperation
 
@@ -28,6 +29,18 @@ _PLACEHOLDER_PATTERNS = (
     re.compile(r"\?\?\?"),
 )
 _NUMBER_RE = re.compile(r"(?:[A-Z]{3}\s*)?[$€£]?\s*(\d[\d,]*(?:\.\d+)?)")
+_BUDGET_AMOUNT_RE = re.compile(
+    r"\bbudget(?:ary)?\b[^.;!?]{0,60}?\b(?:of|is|was|were|at|:)\s*"
+    r"(?:(?:USD|EUR|GBP)\s*|[$€£]\s*)?"
+    r"(?P<amount>\d[\d,]*(?:\.\d+)?)"
+    r"(?:\s*(?:USD|EUR|GBP)\b)?",
+    re.IGNORECASE,
+)
+_MONEY_RE = re.compile(
+    r"(?:(?:USD|EUR|GBP)\s*|[$€£]\s*)(?P<prefix>\d[\d,]*(?:\.\d+)?)"
+    r"|(?P<suffix>\d[\d,]*(?:\.\d+)?)\s*(?:USD|EUR|GBP)\b",
+    re.IGNORECASE,
+)
 _WORD_RE = re.compile(r"[a-z0-9]+")
 _CONFLICT_STOPWORDS = {
     "also",
@@ -72,6 +85,95 @@ def _numbers(text: str) -> list[Decimal]:
         except InvalidOperation:
             continue
     return values
+
+
+def _budget_amounts(text: str) -> list[Decimal]:
+    amounts: list[Decimal] = []
+    for match in _BUDGET_AMOUNT_RE.finditer(text):
+        try:
+            amounts.append(Decimal(match.group("amount").replace(",", "")))
+        except InvalidOperation:
+            continue
+    return amounts
+
+
+def _budget_consistency_issues(spec: DocumentSpec) -> list[Issue]:
+    expected = {
+        amount
+        for assumption in spec.assumptions
+        if "budget" in assumption.lower()
+        for amount in _budget_amounts(assumption)
+    }
+    if not expected:
+        return []
+
+    issues: list[Issue] = []
+    for section in spec.sections:
+        actual = set(_budget_amounts(section_text(section)))
+        conflicts = sorted(actual - expected)
+        if not conflicts:
+            continue
+        expected_text = ", ".join(f"{amount:,.2f}" for amount in sorted(expected))
+        conflict_text = ", ".join(f"{amount:,.2f}" for amount in conflicts)
+        issues.append(
+            Issue(
+                section_id=section.id,
+                severity="major",
+                description=(
+                    f"The section uses budget amount(s) {conflict_text} but the document "
+                    f"assumes {expected_text}. Use the assumed budget consistently and do "
+                    "not invent contingency or derived totals."
+                ),
+            )
+        )
+    return issues
+
+
+def _money_amounts(text: str) -> list[Decimal]:
+    amounts: list[Decimal] = []
+    for match in _MONEY_RE.finditer(text):
+        raw = match.group("prefix") or match.group("suffix")
+        try:
+            amounts.append(Decimal(raw.replace(",", "")))
+        except InvalidOperation:
+            continue
+    return amounts
+
+
+def _source_amounts(spec: DocumentSpec, plan: TaskList, analysis: Analysis) -> set[Decimal]:
+    parts = [analysis.model_dump_json(), *spec.assumptions]
+    for task in plan.tasks:
+        if task.result is not None:
+            parts.append(json.dumps(task.result, default=str))
+        if task.tool_args:
+            parts.append(json.dumps(task.tool_args, default=str))
+    return set(_numbers(" ".join(parts)))
+
+
+def _unsupported_money_issues(
+    spec: DocumentSpec,
+    plan: TaskList,
+    analysis: Analysis,
+) -> list[Issue]:
+    source = _source_amounts(spec, plan, analysis)
+    issues: list[Issue] = []
+    for section in spec.sections:
+        unsupported = sorted(set(_money_amounts(section_text(section))) - source)
+        if not unsupported:
+            continue
+        amounts = ", ".join(f"{amount:,.2f}" for amount in unsupported)
+        issues.append(
+            Issue(
+                section_id=section.id,
+                severity="major",
+                description=(
+                    f"The section contains monetary amount(s) {amounts} that are not "
+                    "supported by the analysis, assumptions, or tool results. Remove "
+                    "them or use supplied figures exactly."
+                ),
+            )
+        )
+    return issues
 
 
 def _task_result(plan: TaskList, tool_name: str) -> dict[str, object] | None:
@@ -292,6 +394,8 @@ def run_checks(spec: DocumentSpec, plan: TaskList, analysis: Analysis) -> list[I
             )
 
     issues.extend(_placeholder_issues(spec))
+    issues.extend(_budget_consistency_issues(spec))
+    issues.extend(_unsupported_money_issues(spec, plan, analysis))
     issues.extend(_budget_total_issues(spec, plan))
     issues.extend(_timeline_issues(spec, plan))
     issues.extend(_failed_task_issues(plan))

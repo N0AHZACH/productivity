@@ -108,6 +108,7 @@ async def _critic_issues(
     state: AgentState,
     spec: DocumentSpec,
     llm: LLMClient,
+    settings: Settings,
 ) -> list[Issue]:
     messages = [
         {"role": "system", "content": load_prompt("critic")},
@@ -120,7 +121,10 @@ async def _critic_issues(
         },
     ]
     review = await llm.complete_json(
-        messages, CriticReview, tier="fast", max_tokens=2048
+        messages,
+        CriticReview,
+        tier="strong",
+        max_tokens=settings.llm_max_output_tokens,
     )
     return review.issues
 
@@ -270,6 +274,10 @@ async def _repair_target(
     target.task.status = TaskStatus.DONE
     target.task.error = None
     target.task.attempts += 1
+    failure_prefix = f"{target.task.id} ({target.task.title}) failed:"
+    state.warnings = [
+        warning for warning in state.warnings if not warning.startswith(failure_prefix)
+    ]
     return _apply_draft(state, target, draft)
 
 
@@ -361,7 +369,7 @@ async def reflect(
         critic_issues: list[Issue] = []
         if should_review:
             try:
-                critic_issues = await _critic_issues(state, state.spec, llm)
+                critic_issues = await _critic_issues(state, state.spec, llm, settings)
                 issues.extend(critic_issues)
             except (LLMOutputInvalid, LLMProviderError) as exc:
                 logger.warning("critic_unavailable", error=str(exc))

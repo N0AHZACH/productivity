@@ -10,6 +10,7 @@ from app.agent.orchestrator import Orchestrator
 from app.container import Container
 from app.core.config import get_settings
 from app.core.errors import DocPilotError
+from app.core.logging import configure_logging
 
 
 def _load_request(path: Path) -> str:
@@ -21,6 +22,7 @@ def _load_request(path: Path) -> str:
 
 async def _run(example: Path) -> int:
     settings = get_settings()
+    configure_logging(settings.log_level, json_logs=settings.log_json)
     if settings.primary_provider_missing_key:
         print(
             f"Provider '{settings.primary_provider}' requires an API key. "

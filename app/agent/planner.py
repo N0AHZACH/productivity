@@ -162,7 +162,13 @@ async def plan(
 
     for round_index in range(3):
         try:
-            candidate = await llm.complete_json(messages, TaskList, tier="strong", max_repairs=0)
+            candidate = await llm.complete_json(
+                messages,
+                TaskList,
+                tier="strong",
+                max_tokens=settings.llm_max_output_tokens,
+                max_repairs=0,
+            )
         except LLMOutputInvalid as exc:
             last_problems = [f"your previous output was not a valid TaskList: {exc}"]
             candidate = None
