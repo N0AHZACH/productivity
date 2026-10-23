@@ -1,5 +1,6 @@
 """FastAPI application factory."""
 
+import asyncio
 import re
 import uuid
 from collections.abc import AsyncIterator
@@ -25,6 +26,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.container.filestore.ensure()
     logger.info("application_started", env=settings.env)
     yield
+    tasks = list(getattr(app.state, "background_tasks", ()))
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
     logger.info("application_stopped", env=settings.env)
 
 
@@ -40,13 +46,14 @@ def create_app(
     else:
         resolved_settings = container.settings
     app = FastAPI(
-        title="DocPilot",
+        title="Productivity",
         version="0.1.0",
         description="Autonomous document agent with validated plans and deterministic Word output.",
         lifespan=_lifespan,
     )
     app.state.settings = resolved_settings
     app.state.container = container
+    app.state.background_tasks = set()
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next: object) -> Response:

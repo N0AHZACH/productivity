@@ -24,7 +24,7 @@ def demo_spec() -> DocumentSpec:
         subtitle="Customer Support Automation: Project Plan",
         doc_type=DocType.PROJECT_PLAN,
         metadata={
-            "author": "DocPilot",
+            "author": "Productivity",
             "date": "2026-10-22",
             "version": "1.0",
         },
@@ -157,7 +157,7 @@ def demo_spec() -> DocumentSpec:
 
 def main() -> None:
     output = Path("examples/demo.docx")
-    theme = Theme(footer_text="DocPilot | Confidential")
+    theme = Theme(footer_text="Productivity | Confidential")
     path = DocxRenderer(theme).render_to(demo_spec(), output)
     print(f"Rendered {path} ({path.stat().st_size:,} bytes)")
 

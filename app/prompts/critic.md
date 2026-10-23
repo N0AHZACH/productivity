@@ -8,6 +8,8 @@ Review for:
 - unsupported factual claims, inconsistent numbers, dates, names, totals, or budget
   amounts, including derived figures and added contingency not present in the analysis;
 - placeholders, vague filler, or text that fails its acceptance criterion;
+- unquantified success criteria, fixed or approved budgets without an amount, and
+  team/workstream roles that do not match the budget roles;
 - statements that contradict the analysis, tool results, or another section;
 - unresolved trade-offs that are hidden instead of addressed.
 

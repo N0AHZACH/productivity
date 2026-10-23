@@ -1,9 +1,10 @@
-"""OpenAI-compatible async client used for Groq, Ollama, and Gemini."""
+"""OpenAI-compatible async client used for Groq, Ollama, Gemini, and OpenRouter."""
 
 import asyncio
 import inspect
 import json
 import re
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
@@ -32,23 +33,47 @@ def _is_retryable(exc: BaseException) -> bool:
         exc,
         (openai.APITimeoutError, openai.APIConnectionError, openai.RateLimitError, TimeoutError),
     ):
-        return True
+        # A provider asking for minutes is out of daily quota, not briefly throttled.
+        hint = _retry_after_raw(exc)
+        return hint is None or hint <= 120.0
     status = _status_code(exc)
     return status == 429 or (status is not None and 500 <= status < 600)
 
 
-def _retry_after_seconds(exc: BaseException) -> float | None:
-    response = getattr(exc, "response", None)
-    headers = getattr(response, "headers", None)
-    if not headers:
-        return None
-    raw = headers.get("retry-after") or headers.get("Retry-After")
-    if raw is None:
-        return None
+_RETRY_DELAY_RE = re.compile(
+    r"retry(?:[_-]?after|Delay)['\"]?\s*[:=]\s*['\"]?(\d+(?:\.\d+)?)\s*s?",
+    re.IGNORECASE,
+)
+
+
+def _delay_value(raw: object) -> float | None:
     try:
-        return max(0.0, min(float(raw), 60.0))
+        return max(0.0, float(str(raw)))
     except (TypeError, ValueError):
         return None
+
+
+def _retry_after_raw(exc: BaseException) -> float | None:
+    """Read a provider retry hint, in seconds, from a header or the error payload."""
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers:
+        raw = headers.get("retry-after") or headers.get("Retry-After")
+        if raw is not None:
+            delay = _delay_value(raw)
+            if delay is not None:
+                return delay
+    # Gemini and some gateways report the wait only inside the error body.
+    match = _RETRY_DELAY_RE.search(str(exc))
+    if match is not None:
+        return _delay_value(match.group(1))
+    return None
+
+
+def _retry_after_seconds(exc: BaseException) -> float | None:
+    """Return the retry wait to honor, capped so one call cannot stall the run."""
+    raw = _retry_after_raw(exc)
+    return None if raw is None else min(raw, 60.0)
 
 
 class _RetryAfterExponential:
@@ -69,6 +94,22 @@ class _RetryAfterExponential:
                 if retry_after is not None:
                     return retry_after
         return float(self._fallback(retry_state))
+
+
+def _content_text(content: Any) -> str | None:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for part in content:
+            text = part.get("text") if isinstance(part, dict) else getattr(part, "text", None)
+            if isinstance(text, str):
+                parts.append(text)
+        return "".join(parts) if parts else None
+    if isinstance(content, dict):
+        text = content.get("text")
+        return text if isinstance(text, str) else None
+    return None
 
 
 def extract_json_object(text: str) -> str:
@@ -118,6 +159,7 @@ class OpenAICompatClient:
         supports_json_mode: bool = True,
         reasoning_effort: str | None = None,
         retry_base_delay_s: float = 1.0,
+        min_interval_s: float = 0.0,
         usage_sink: UsageSink | None = None,
         client: Any | None = None,
     ) -> None:
@@ -134,11 +176,24 @@ class OpenAICompatClient:
         self.supports_json_mode = supports_json_mode
         self.reasoning_effort = reasoning_effort
         self.retry_base_delay_s = retry_base_delay_s
+        self.min_interval_s = max(0.0, min_interval_s)
         self.usage_sink = usage_sink
         self._semaphore = asyncio.Semaphore(max_concurrency)
+        self._pace_lock = asyncio.Lock()
+        self._next_slot = 0.0
 
     def _model_for(self, tier: Tier) -> str:
         return self.model_strong if tier == "strong" else self.model_fast
+
+    async def _pace(self) -> None:
+        """Space calls out so free-tier per-minute quotas are not burst-exceeded."""
+        if self.min_interval_s <= 0:
+            return
+        async with self._pace_lock:
+            wait_s = self._next_slot - time.monotonic()
+            if wait_s > 0:
+                await asyncio.sleep(wait_s)
+            self._next_slot = time.monotonic() + self.min_interval_s
 
     async def complete(
         self,
@@ -264,6 +319,7 @@ class OpenAICompatClient:
         )
         try:
             async with self._semaphore:
+                await self._pace()
                 async for attempt in retrying:
                     with attempt:
                         response = await self._client.chat.completions.create(**request)
@@ -281,9 +337,18 @@ class OpenAICompatClient:
         if not choices:
             raise ValueError("provider returned no choices")
         message = getattr(choices[0], "message", None)
-        content = getattr(message, "content", None)
-        if not isinstance(content, str):
-            raise ValueError("provider returned non-text content")
+        raw_content = getattr(message, "content", None)
+        content = _content_text(raw_content)
+        if content is None:
+            finish_reason = getattr(choices[0], "finish_reason", None)
+            logger.warning(
+                "llm_non_text_content",
+                finish_reason=finish_reason,
+                content_type=type(raw_content).__name__,
+            )
+            raise ValueError(
+                f"provider returned non-text content (finish_reason={finish_reason})"
+            )
         usage = getattr(response, "usage", None)
         return LLMResult(
             text=content,

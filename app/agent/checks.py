@@ -4,12 +4,14 @@ import json
 import re
 from decimal import Decimal, InvalidOperation
 
-from app.agent.text_utils import titles_match
+from app.agent.text_utils import normalize_title, titles_match
 from app.models.common import TaskStatus
 from app.models.document import (
+    Block,
     BulletList,
     Callout,
     DocumentSpec,
+    Heading,
     NumberedList,
     Paragraph,
     Section,
@@ -30,7 +32,9 @@ _PLACEHOLDER_PATTERNS = (
 )
 _NUMBER_RE = re.compile(r"(?:[A-Z]{3}\s*)?[$€£]?\s*(\d[\d,]*(?:\.\d+)?)")
 _BUDGET_AMOUNT_RE = re.compile(
-    r"\bbudget(?:ary)?\b[^.;!?]{0,60}?\b(?:of|is|was|were|at|:)\s*"
+    r"\bbudget(?:ary)?"
+    r"(?:\s+(?:assumption|ceiling|estimate|expectation|limit|target|total))?"
+    r"\s*(?:of|is|was|were|at|:)\s*"
     r"(?:(?:USD|EUR|GBP)\s*|[$€£]\s*)?"
     r"(?P<amount>\d[\d,]*(?:\.\d+)?)"
     r"(?:\s*(?:USD|EUR|GBP)\b)?",
@@ -42,6 +46,33 @@ _MONEY_RE = re.compile(
     re.IGNORECASE,
 )
 _WORD_RE = re.compile(r"[a-z0-9]+")
+_FIXED_BUDGET_RE = re.compile(
+    r"\b(?:(?:fixed|approved|allocated)(?:\s+[\w-]+){0,2}\s+budget|"
+    r"budget\s+(?:is|was|has been)\s+(?:fixed|approved|allocated))\b",
+    re.IGNORECASE,
+)
+_CRITERIA_HEADING_RE = re.compile(
+    r"\b(?:success\s+criteria|success\s+measures?|key\s+performance\s+indicators?|kpis?)\b",
+    re.IGNORECASE,
+)
+_VAGUE_TARGET_RE = re.compile(
+    r"\b(?:minimum|maximum|target|positive|improve(?:s|d|ment)?|increase(?:s|d)?|"
+    r"reduce(?:s|d)?|higher|lower|faster|better|timely|efficient(?:ly)?|"
+    r"significant(?:ly)?|substantial(?:ly)?|high|low|robust|seamless|optimal|"
+    r"successful(?:ly)?|effective(?:ly)?|adher(?:e|ence|ent)?|resol(?:ve|ution|ved)?)\b",
+    re.IGNORECASE,
+)
+_TOTAL_ROW_LABELS = {"total", "subtotal", "grand total"}
+_GENERIC_ROLE_LABELS = {
+    "role",
+    "category",
+    "description",
+    "item",
+    "type",
+    "kind",
+    "extra",
+    "summary",
+}
 _CONFLICT_STOPWORDS = {
     "also",
     "and",
@@ -176,6 +207,253 @@ def _unsupported_money_issues(
     return issues
 
 
+def _budget_basis_issues(spec: DocumentSpec) -> list[Issue]:
+    references = [
+        section
+        for section in spec.sections
+        if _FIXED_BUDGET_RE.search(section_text(section))
+    ]
+    if not references:
+        return []
+    if any(
+        "budget" in assumption.lower() and _money_amounts(assumption)
+        for assumption in spec.assumptions
+    ):
+        return []
+    for section in spec.sections:
+        for sentence in re.split(r"(?<=[.!?])\s+", section_text(section)):
+            if _FIXED_BUDGET_RE.search(sentence) and _money_amounts(sentence):
+                return []
+    section = next(
+        (candidate for candidate in references if "budget" in candidate.heading.lower()),
+        references[0],
+    )
+    return [
+        Issue(
+            section_id=section.id,
+            severity="major",
+            description=(
+                "The document refers to a fixed/approved budget but never states the "
+                "amount. State the approved amount, or say the amount was not provided "
+                "and label the estimated budget as a planning assumption or ceiling."
+            ),
+        )
+    ]
+
+
+def _block_items(block: Block) -> list[str]:
+    if isinstance(block, Paragraph):
+        return [block.text]
+    if isinstance(block, (BulletList, NumberedList)):
+        return block.items
+    if isinstance(block, Table):
+        return [" | ".join(row) for row in block.rows]
+    if isinstance(block, Callout):
+        return [block.text]
+    return []
+
+
+def _criteria_blocks(section: Section) -> list[Block]:
+    for index, block in enumerate(section.blocks):
+        if isinstance(block, Heading) and _CRITERIA_HEADING_RE.search(block.text):
+            nested: list[Block] = []
+            for candidate in section.blocks[index + 1 :]:
+                if isinstance(candidate, Heading):
+                    break
+                nested.append(candidate)
+            return nested
+    if _CRITERIA_HEADING_RE.search(section.heading):
+        return [block for block in section.blocks if not isinstance(block, Heading)]
+    return []
+
+
+def _measurement_issues(spec: DocumentSpec) -> list[Issue]:
+    issues: list[Issue] = []
+    for section in spec.sections:
+        vague: list[str] = []
+        for block in _criteria_blocks(section):
+            if isinstance(block, Paragraph) and block.text.strip().endswith(":"):
+                continue
+            for item in _block_items(block):
+                if _VAGUE_TARGET_RE.search(item) and not re.search(r"\d", item):
+                    vague.append(item.strip())
+        if not vague:
+            continue
+        examples = "; ".join(repr(item) for item in vague[:2])
+        remaining = f" (+{len(vague) - 2} more)" if len(vague) > 2 else ""
+        issues.append(
+            Issue(
+                section_id=section.id,
+                severity="major",
+                description=(
+                    f"The success criteria contain unquantified target(s): {examples}"
+                    f"{remaining}. Add a numeric threshold, unit, and timeframe, or state "
+                    "a labelled assumption."
+                ),
+            )
+        )
+    return issues
+
+
+def _role_columns(table: Table, *, budget: bool) -> list[int]:
+    headers = [normalize_title(column) for column in table.columns]
+    has_headcount = any("headcount" in header for header in headers)
+    if budget:
+        if not has_headcount:
+            return []
+        return [
+            index
+            for index, header in enumerate(headers)
+            if any(term in header for term in ("role", "category", "description", "item"))
+        ]
+    if has_headcount:
+        return []
+    if not any(
+        term in header
+        for header in headers
+        for term in ("team", "member", "workstream", "owner", "staff", "name")
+    ):
+        return []
+    return [
+        index
+        for index, header in enumerate(headers)
+        if any(term in header for term in ("role", "owner", "lead", "assigned"))
+    ]
+
+
+def _role_names(table: Table, role_index: int, *, budget: bool) -> list[str]:
+    headers = [normalize_title(column) for column in table.columns]
+    headcount_index = next(
+        (index for index, header in enumerate(headers) if "headcount" in header),
+        None,
+    )
+    header = headers[role_index] if role_index < len(headers) else ""
+    extract_parenthetical = not budget and "role" not in header
+    names: list[str] = []
+    seen: set[str] = set()
+    for row in table.rows:
+        if len(row) <= role_index:
+            continue
+        name = row[role_index].strip()
+        if extract_parenthetical:
+            matches = re.findall(r"\(([^()]*)\)", name)
+            if not matches:
+                continue
+            name = matches[-1].strip()
+        key = normalize_title(name)
+        if (
+            not key
+            or key in _TOTAL_ROW_LABELS
+            or key.startswith(("total ", "subtotal ", "grand total "))
+            or key in _GENERIC_ROLE_LABELS
+        ):
+            continue
+        if (
+            budget
+            and headcount_index is not None
+            and (len(row) <= headcount_index or not re.search(r"\d", row[headcount_index]))
+        ):
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        names.append(name)
+    return names
+
+
+def _role_alignment_issues(spec: DocumentSpec) -> list[Issue]:
+    team_tables: list[tuple[Section, list[list[str]]]] = []
+    budget_tables: list[tuple[Section, list[str]]] = []
+    for section in spec.sections:
+        for block in section.blocks:
+            if not isinstance(block, Table):
+                continue
+            budget_columns = _role_columns(block, budget=True)
+            if budget_columns:
+                roles: list[str] = []
+                for index in budget_columns:
+                    for role in _role_names(block, index, budget=True):
+                        if not any(titles_match(role, found) for found in roles):
+                            roles.append(role)
+                if len(roles) >= 2:
+                    budget_tables.append((section, roles))
+                continue
+            team_columns = _role_columns(block, budget=False)
+            role_sets: list[list[str]] = []
+            for index in team_columns:
+                roles = _role_names(block, index, budget=False)
+                if len(roles) >= 2:
+                    role_sets.append(roles)
+            if role_sets:
+                team_tables.append((section, role_sets))
+    if not team_tables or not budget_tables:
+        return []
+
+    primary_team_tables = [
+        (section, role_sets)
+        for section, role_sets in team_tables
+        if any(
+            term in normalize_title(section.heading)
+            for term in ("workstream", "governance", "team", "role")
+        )
+    ]
+    if primary_team_tables:
+        team_tables = primary_team_tables
+
+    budget_roles: list[str] = []
+    seen: set[str] = set()
+    for _, roles in budget_tables:
+        for role in roles:
+            key = normalize_title(role)
+            if key not in seen:
+                seen.add(key)
+                budget_roles.append(role)
+
+    issues: list[Issue] = []
+    for section, role_sets in team_tables:
+        best: tuple[int, list[str], list[str]] | None = None
+        for roles in role_sets:
+            team_only = [
+                role
+                for role in roles
+                if not any(
+                    titles_match(role, budget_role) for budget_role in budget_roles
+                )
+            ]
+            budget_only = [
+                role
+                for role in budget_roles
+                if not any(titles_match(role, team_role) for team_role in roles)
+            ]
+            score = len(team_only) + len(budget_only)
+            if best is None or score < best[0]:
+                best = (score, team_only, budget_only)
+        if best is None or best[0] == 0:
+            continue
+        _, team_only, budget_only = best
+        details = []
+        if team_only:
+            details.append("team-only: " + ", ".join(team_only))
+        if budget_only:
+            details.append("budget-only: " + ", ".join(budget_only))
+        issues.append(
+            Issue(
+                section_id=section.id,
+                severity="major",
+                description=(
+                    "The team/workstream roles do not align with the budget roles ("
+                    + "; ".join(details)
+                    + "). Use one role taxonomy in both tables or add an "
+                    "operational/budget-role mapping column to the team table using "
+                    "these exact budget labels: "
+                    + ", ".join(budget_roles)
+                    + "; do not merely state that the roles match."
+                ),
+            )
+        )
+    return issues
+
+
 def _task_result(plan: TaskList, tool_name: str) -> dict[str, object] | None:
     for task in plan.tasks:
         if (
@@ -186,6 +464,19 @@ def _task_result(plan: TaskList, tool_name: str) -> dict[str, object] | None:
         ):
             return task.result
     return None
+
+
+def _is_budget_table(table: Table) -> bool:
+    headers = [normalize_title(column) for column in table.columns]
+    if any(
+        any(term in header for term in ("line total", "amount", "cost", "budget"))
+        for header in headers
+    ):
+        return True
+    return any(
+        any(normalize_title(cell) in _TOTAL_ROW_LABELS for cell in row[:2])
+        for row in table.rows
+    )
 
 
 def _budget_total_issues(spec: DocumentSpec, plan: TaskList) -> list[Issue]:
@@ -216,7 +507,7 @@ def _budget_total_issues(spec: DocumentSpec, plan: TaskList) -> list[Issue]:
     table_problem: Issue | None = None
     for section in budget_sections:
         for block in section.blocks:
-            if not isinstance(block, Table):
+            if not isinstance(block, Table) or not _is_budget_table(block):
                 continue
             if _table_matches_budget(block, expected):
                 continue
@@ -225,7 +516,8 @@ def _budget_total_issues(spec: DocumentSpec, plan: TaskList) -> list[Issue]:
                 severity="major",
                 description=(
                     f"The table in {section.heading!r} does not reconcile to the "
-                    f"estimate_budget total of {expected:,.2f}. Use the tool total exactly."
+                    f"estimate_budget total of {expected:,.2f}. Use the tool total exactly "
+                    "and include the subtotal, contingency, and total rows needed to add up."
                 ),
             )
             break
@@ -263,6 +555,11 @@ def _timeline_issues(spec: DocumentSpec, plan: TaskList) -> list[Issue]:
         ),
         None,
     )
+    # A timeline tool can support a section that speaks in phases or weeks (for example
+    # a memo's next steps). Only enforce the tool dates where the document itself
+    # presents a schedule.
+    if timeline_section is None:
+        return []
     issues = []
     for key in ("start_date", "end_date"):
         value = result.get(key)
@@ -395,8 +692,11 @@ def run_checks(spec: DocumentSpec, plan: TaskList, analysis: Analysis) -> list[I
 
     issues.extend(_placeholder_issues(spec))
     issues.extend(_budget_consistency_issues(spec))
+    issues.extend(_budget_basis_issues(spec))
     issues.extend(_unsupported_money_issues(spec, plan, analysis))
     issues.extend(_budget_total_issues(spec, plan))
+    issues.extend(_measurement_issues(spec))
+    issues.extend(_role_alignment_issues(spec))
     issues.extend(_timeline_issues(spec, plan))
     issues.extend(_failed_task_issues(plan))
     issues.extend(_conflict_issues(spec, analysis))

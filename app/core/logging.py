@@ -50,7 +50,7 @@ def configure_logging(level: str = "INFO", *, json_logs: bool = True) -> None:
     )
 
 
-def get_logger(name: str = "docpilot") -> Any:
+def get_logger(name: str = "productivity") -> Any:
     """Return a bound structured logger."""
     return structlog.get_logger(name)
 

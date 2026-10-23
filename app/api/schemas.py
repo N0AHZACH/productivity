@@ -13,6 +13,14 @@ class AgentRequest(BaseModel):
     request: str = Field(min_length=1, description="Natural-language document request")
 
 
+class RunStartedResponse(BaseModel):
+    """Handle returned when a run is accepted for background execution."""
+
+    run_id: str
+    status: RunStatus
+    events_url: str
+
+
 class AgentRunResponse(BaseModel):
     """Complete, serializable result of one successful run."""
 

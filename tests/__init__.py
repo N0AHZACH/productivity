@@ -1,1 +1,1 @@
-"""DocPilot test suite."""
+"""Productivity test suite."""

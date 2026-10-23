@@ -1,0 +1,1510 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#000000">
+  <title>Productivity | Document Studio</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --black: #000000;
+      --ink: #f3efe6;
+      --dim: #c0bbb0;
+      --faint: #8d887f;
+      --rule: #2a2825;
+      --rule-2: #46433e;
+      --ok: #6ed49b;
+      --bad: #f0776d;
+    }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--black);
+      color: var(--ink);
+      font-family: "Times New Roman", Times, serif;
+      font-size: 18px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, textarea, input { font: inherit; }
+    button { color: inherit; }
+    a { color: inherit; }
+    code { font-family: inherit; }
+    ::selection { background: var(--ink); color: var(--black); }
+
+    :focus-visible {
+      outline: 1px solid var(--ink);
+      outline-offset: 4px;
+    }
+
+    .sheet {
+      width: min(1320px, calc(100% - 96px));
+      margin: 0 auto;
+      padding: 42px 0 30px;
+      display: flex;
+      min-height: 100vh;
+      flex-direction: column;
+    }
+
+    .masthead { display: block; }
+
+    .topline {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 24px;
+      padding-bottom: 13px;
+      border-bottom: 1px solid var(--rule-2);
+      font-size: 0.74rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .wordmark { color: var(--ink); }
+
+    .topline-nav {
+      display: flex;
+      align-items: baseline;
+      gap: 28px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--faint);
+      font-size: 0.7rem;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+    }
+
+    .pill::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      flex: 0 0 auto;
+      border: 1px solid currentColor;
+      border-radius: 50%;
+    }
+
+    .pill.ready { color: var(--ok); }
+    .pill.ready::before { background: var(--ok); border-color: var(--ok); }
+
+    .pill.down,
+    .pill.offline { color: var(--bad); }
+    .pill.down::before,
+    .pill.offline::before { background: var(--bad); border-color: var(--bad); }
+
+    .docs-link {
+      color: var(--dim);
+      text-decoration: none;
+      border-bottom: 1px solid var(--rule-2);
+      padding-bottom: 2px;
+      font-size: 0.7rem;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+      transition: color 120ms linear, border-color 120ms linear;
+    }
+
+    .docs-link:hover { color: var(--ink); border-color: var(--ink); }
+
+    .title-block {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+      gap: 56px;
+      align-items: end;
+      padding: 54px 0 44px;
+      border-bottom: 3px double var(--rule-2);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2.5rem, 5vw, 4.35rem);
+      font-weight: normal;
+      line-height: 0.98;
+      letter-spacing: -0.035em;
+      text-wrap: balance;
+    }
+
+    h1 em { font-style: italic; }
+
+    .standfirst {
+      margin: 0 0 6px;
+      max-width: 30em;
+      color: var(--dim);
+      font-size: 1.06rem;
+      line-height: 1.6;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 24rem) minmax(0, 1fr);
+      margin-top: 0;
+    }
+
+    .brief {
+      padding: 40px 48px 40px 0;
+      border-right: 1px solid var(--rule);
+    }
+
+    .workspace {
+      min-width: 0;
+      padding: 40px 0 0 48px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin: 0 0 8px;
+    }
+
+    .section-num {
+      color: var(--faint);
+      font-size: 0.74rem;
+      letter-spacing: 0.12em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 1.16rem;
+      font-weight: normal;
+      font-variant: small-caps;
+      letter-spacing: 0.07em;
+      line-height: 1.2;
+    }
+
+    .intro {
+      margin: 0 0 26px;
+      color: var(--dim);
+      font-size: 1rem;
+      max-width: 30em;
+    }
+
+    .presets {
+      border-top: 1px solid var(--rule);
+      margin-top: 4px;
+    }
+
+    .preset {
+      display: grid;
+      grid-template-columns: 2.4rem minmax(0, 1fr);
+      gap: 8px;
+      width: 100%;
+      padding: 15px 0;
+      text-align: left;
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--rule);
+      cursor: pointer;
+    }
+
+    .preset-number {
+      padding-top: 3px;
+      color: var(--faint);
+      font-size: 0.82rem;
+      font-style: italic;
+    }
+
+    .preset-copy strong {
+      display: block;
+      font-size: 1.03rem;
+      font-weight: normal;
+    }
+
+    .preset-copy span {
+      display: block;
+      margin-top: 3px;
+      color: var(--dim);
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+
+    .preset:hover .preset-copy strong { text-decoration: underline; text-underline-offset: 3px; }
+    .preset:hover .preset-copy span { color: var(--ink); }
+
+    .form-rule {
+      margin: 28px 0 22px;
+      border-top: 1px solid var(--rule);
+    }
+
+    .field-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 10px;
+      color: var(--faint);
+      font-size: 0.74rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .counter { font-variant-numeric: tabular-nums; }
+
+    textarea {
+      width: 100%;
+      min-height: 190px;
+      padding: 14px 0;
+      resize: vertical;
+      color: var(--ink);
+      background: transparent;
+      border: 0;
+      border-top: 1px solid var(--rule-2);
+      border-bottom: 1px solid var(--rule-2);
+      outline: none;
+      font-size: 1.04rem;
+      line-height: 1.65;
+    }
+
+    textarea:focus { border-color: var(--ink); }
+    textarea:focus-visible { outline: none; }
+    textarea::placeholder { color: var(--faint); font-style: italic; }
+
+    .run-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .primary,
+    .secondary,
+    .download {
+      border-radius: 0;
+      padding: 14px 20px;
+      cursor: pointer;
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      transition: background 120ms linear, color 120ms linear, border-color 120ms linear;
+    }
+
+    .primary {
+      flex: 1;
+      background: var(--ink);
+      color: var(--black);
+      border: 1px solid var(--ink);
+    }
+
+    .primary:hover:not(:disabled) {
+      background: transparent;
+      color: var(--ink);
+    }
+
+    .primary:disabled {
+      background: var(--faint);
+      border-color: var(--faint);
+      color: var(--black);
+      cursor: default;
+    }
+
+    .secondary {
+      background: transparent;
+      color: var(--dim);
+      border: 1px solid var(--rule-2);
+    }
+
+    .secondary:hover { color: var(--ink); border-color: var(--ink); }
+
+    .auth {
+      margin-top: 24px;
+      padding-top: 14px;
+      border-top: 1px solid var(--rule);
+    }
+
+    .auth summary {
+      color: var(--faint);
+      cursor: pointer;
+      font-size: 0.84rem;
+      font-style: italic;
+    }
+
+    .auth summary:hover { color: var(--dim); }
+
+    .auth input {
+      width: 100%;
+      margin-top: 12px;
+      padding: 9px 0;
+      color: var(--ink);
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--rule-2);
+      outline: none;
+    }
+
+    .auth input:focus { border-bottom-color: var(--ink); }
+    .auth input::placeholder { color: var(--faint); }
+
+    .privacy {
+      margin: 18px 0 0;
+      color: var(--faint);
+      font-size: 0.8rem;
+      line-height: 1.5;
+    }
+
+    .privacy code { color: var(--dim); text-decoration: underline; text-underline-offset: 2px; }
+
+    .run-state {
+      padding: 0 0 28px;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .run-state-top {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      margin-top: 11px;
+      flex: 0 0 auto;
+      border: 1px solid var(--dim);
+      border-radius: 50%;
+      background: transparent;
+    }
+
+    .status-dot.running {
+      background: var(--ink);
+      border-color: var(--ink);
+      animation: blink 1.6s steps(2, end) infinite;
+    }
+
+    .status-dot.success {
+      background: var(--ink);
+      border-color: var(--ink);
+    }
+
+    .status-dot.error { border: 2px solid var(--ink); }
+
+    @keyframes blink { 50% { opacity: 0.3; } }
+
+    .run-state h2 {
+      font-size: 1.75rem;
+      font-variant: normal;
+      letter-spacing: -0.015em;
+      line-height: 1.15;
+    }
+
+    .run-state p {
+      margin: 5px 0 0;
+      max-width: 48em;
+      color: var(--dim);
+      font-size: 0.98rem;
+    }
+
+    .run-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 34px;
+      margin: 22px 0 0 22px;
+    }
+
+    .run-meta div { display: flex; align-items: baseline; gap: 9px; }
+
+    .run-meta dt {
+      color: var(--faint);
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .run-meta dd {
+      margin: 0;
+      font-size: 0.88rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .run-meta dd.run-id { color: var(--dim); font-style: italic; }
+
+    .progress-track {
+      height: 1px;
+      margin: 20px 0 0 22px;
+      background: var(--rule-2);
+    }
+
+    .progress-fill {
+      display: block;
+      width: 0;
+      height: 100%;
+      background: var(--ink);
+      transition: width 300ms ease;
+    }
+
+    .panel {
+      padding: 30px 0 32px;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .panel-head { justify-content: flex-start; }
+    .panel-head .badge { margin-left: auto; }
+
+    .column-note {
+      margin: -2px 0 14px;
+      color: var(--dim);
+      font-size: 0.9rem;
+    }
+
+    .badge {
+      color: var(--faint);
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .badge.done { color: var(--ink); }
+    .badge.running { color: var(--ink); font-style: italic; }
+    .badge.failed { color: var(--ink); }
+    .badge.skipped { color: var(--faint); font-style: italic; }
+
+    .plan-list,
+    .trace-list {
+      max-height: 340px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .plan-list { display: grid; }
+
+    .trace-list { max-height: 260px; }
+
+    .empty {
+      padding: 16px 0;
+      color: var(--faint);
+      border-bottom: 1px solid var(--rule);
+      font-size: 0.92rem;
+      font-style: italic;
+    }
+
+    .task {
+      display: grid;
+      grid-template-columns: 3rem minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: baseline;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .task.running .task-title { font-style: italic; }
+    .task.done .task-title { color: var(--dim); }
+    .task.skipped { color: var(--faint); font-style: italic; }
+    .task.failed { border-bottom-color: var(--ink); }
+
+    .task-id {
+      color: var(--faint);
+      font-size: 0.74rem;
+      letter-spacing: 0.08em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .task-title {
+      max-width: 72ch;
+      font-size: 1.02rem;
+      line-height: 1.4;
+    }
+
+    .task-meta {
+      margin-top: 3px;
+      color: var(--faint);
+      font-size: 0.8rem;
+      line-height: 1.4;
+    }
+
+    .task-error {
+      margin-top: 5px;
+      color: var(--ink);
+      font-size: 0.8rem;
+      font-style: italic;
+    }
+
+    .trace-row {
+      display: grid;
+      grid-template-columns: 6rem minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: baseline;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--rule);
+      font-size: 0.9rem;
+    }
+
+    .trace-stage {
+      color: var(--faint);
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .trace-msg {
+      max-width: 84ch;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .trace-ms {
+      color: var(--faint);
+      font-size: 0.76rem;
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .trace-row.error .trace-msg { font-style: italic; }
+    .trace-row.success .trace-msg { text-decoration: underline; text-underline-offset: 3px; }
+
+    .result-panel {
+      padding-top: 26px;
+      border-top: 3px double var(--rule-2);
+      border-bottom: 0;
+    }
+
+    .result-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 24px;
+      flex-wrap: wrap;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .result-heading { min-width: 0; }
+
+    .result-title-row {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .result-heading h2 {
+      font-size: 1.55rem;
+      font-variant: normal;
+      letter-spacing: -0.015em;
+    }
+
+    .result-heading p {
+      margin: 6px 0 0;
+      color: var(--dim);
+      font-size: 0.92rem;
+      font-style: italic;
+    }
+
+    .download {
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid var(--rule-2);
+    }
+
+    .download:hover:not(:disabled) {
+      background: var(--ink);
+      color: var(--black);
+      border-color: var(--ink);
+    }
+
+    .download:disabled { color: var(--faint); border-color: var(--rule); cursor: default; }
+
+    .error-banner {
+      margin-top: 18px;
+      padding: 4px 0 4px 14px;
+      border-left: 2px solid var(--ink);
+      font-size: 0.92rem;
+      font-style: italic;
+    }
+
+    .result-facts {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .fact { padding: 14px 16px 16px 0; }
+    .fact + .fact { padding-left: 16px; border-left: 1px solid var(--rule); }
+
+    .fact span {
+      display: block;
+      color: var(--faint);
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .fact strong {
+      display: block;
+      margin-top: 5px;
+      font-size: 1.02rem;
+      font-weight: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .result-body {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      column-gap: 40px;
+      padding-top: 4px;
+    }
+
+    .result-section {
+      padding: 13px 0;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .result-section.wide { grid-column: 1 / -1; }
+
+    .result-section h3 {
+      margin: 0 0 7px;
+      color: var(--faint);
+      font-size: 0.7rem;
+      font-weight: normal;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .result-note {
+      margin: 0;
+      max-width: 78ch;
+      font-size: 1rem;
+      line-height: 1.6;
+    }
+
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      font-size: 0.92rem;
+      line-height: 1.55;
+    }
+
+    .chip { overflow-wrap: anywhere; }
+
+    .chip + .chip::before {
+      content: "\00b7";
+      margin: 0 0.55em;
+      color: var(--faint);
+    }
+
+    .chip.warning { font-style: italic; }
+
+    .colophon {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      margin-top: auto;
+      padding-top: 16px;
+      border-top: 1px solid var(--rule-2);
+      color: var(--faint);
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    @media (max-width: 1080px) {
+      .sheet { width: calc(100% - 56px); }
+      .grid { grid-template-columns: 1fr; }
+      .brief {
+        padding: 36px 0 32px;
+        border-right: 0;
+        border-bottom: 1px solid var(--rule);
+      }
+      .workspace { padding: 32px 0 0; }
+      .title-block {
+        grid-template-columns: 1fr;
+        gap: 22px;
+        padding: 40px 0 34px;
+      }
+      .standfirst { max-width: 40em; }
+    }
+
+    @media (max-width: 720px) {
+      .sheet { width: calc(100% - 32px); padding-top: 22px; }
+      .topline {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .topline-nav { gap: 20px; }
+      h1 { font-size: 2.5rem; }
+      .run-state h2 { font-size: 1.45rem; }
+      .run-meta,
+      .progress-track { margin-left: 0; }
+      .result-facts { grid-template-columns: 1fr; }
+      .fact { padding: 11px 0; }
+      .fact + .fact {
+        padding-left: 0;
+        border-left: 0;
+        border-top: 1px solid var(--rule);
+      }
+      .result-body { grid-template-columns: 1fr; }
+      .task { grid-template-columns: 2.4rem minmax(0, 1fr); }
+      .task .badge { grid-column: 2; justify-self: start; }
+      .trace-row { grid-template-columns: 5rem minmax(0, 1fr); }
+      .trace-ms { grid-column: 2; text-align: left; }
+      .colophon {
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 34px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .status-dot.running { animation: none; }
+      .progress-fill { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <header class="masthead">
+      <div class="topline">
+        <span class="wordmark">Productivity</span>
+        <div class="topline-nav">
+          <span class="pill" id="apiState">Checking API</span>
+          <a class="docs-link" href="/docs" target="_blank" rel="noreferrer">API documentation</a>
+        </div>
+      </div>
+      <div class="title-block">
+        <h1>A request in.<br>A reviewed <em>Word</em> file out.</h1>
+        <p class="standfirst">Write what you need in plain language. The agent settles the document type, plans the work, runs its tools, reviews its own draft, and renders a .docx on this machine.</p>
+      </div>
+    </header>
+
+    <main class="grid">
+      <aside class="brief">
+        <div class="section-head">
+          <span class="section-num">01</span>
+          <h2>Brief</h2>
+        </div>
+        <p class="intro">Choose a starting point or write your own request.</p>
+
+        <div class="presets">
+          <button class="preset" type="button" data-preset="standard">
+            <span class="preset-number">i.</span>
+            <span class="preset-copy">
+              <strong>Project plan</strong>
+              <span>Scope, budget, timeline, risks, next steps</span>
+            </span>
+          </button>
+          <button class="preset" type="button" data-preset="complex">
+            <span class="preset-number">ii.</span>
+            <span class="preset-copy">
+              <strong>Decision memo</strong>
+              <span>Conflicts, missing facts, assumptions, trade&#8209;offs</span>
+            </span>
+          </button>
+          <button class="preset" type="button" data-preset="smoke">
+            <span class="preset-number">iii.</span>
+            <span class="preset-copy">
+              <strong>Quick test</strong>
+              <span>Rough notes to meeting minutes, fastest end-to-end run</span>
+            </span>
+          </button>
+        </div>
+
+        <div class="form-rule"></div>
+
+        <div class="field-label">
+          <label for="request">Request</label>
+          <span class="counter"><span id="charCount">0</span> / 4000</span>
+        </div>
+        <textarea id="request" maxlength="4000" placeholder="Write a project plan for launching a customer support chatbot..."></textarea>
+
+        <div class="run-row">
+          <button class="primary" id="runBtn" type="button">Generate document</button>
+          <button class="secondary" id="resetBtn" type="button">Clear</button>
+        </div>
+
+        <details class="auth">
+          <summary>API key, if authentication is enabled</summary>
+          <input id="apiKey" type="password" autocomplete="off" placeholder="X-API-Key value">
+        </details>
+
+        <p class="privacy">Progress streams over SSE. The generated file is stored locally under <code>data/documents</code>.</p>
+      </aside>
+
+      <section class="workspace">
+        <div class="run-state" aria-live="polite">
+          <div class="run-state-top">
+            <span class="status-dot" id="statusDot"></span>
+            <div>
+              <h2 id="statusTitle">Ready for a request</h2>
+              <p id="statusText">Nothing runs until you press generate.</p>
+            </div>
+          </div>
+          <dl class="run-meta">
+            <div><dt>Tasks</dt><dd id="taskCount">0</dd></div>
+            <div><dt>Completed</dt><dd id="doneCount">0</dd></div>
+            <div><dt>Run</dt><dd class="run-id" id="runId">not started</dd></div>
+          </dl>
+          <div class="progress-track"><span class="progress-fill" id="progressBar"></span></div>
+        </div>
+
+        <section class="panel">
+          <div class="section-head panel-head">
+            <span class="section-num">02</span>
+            <h2>Plan</h2>
+            <span class="badge" id="planSource">waiting</span>
+          </div>
+          <p class="column-note">The task graph, updated as each step finishes.</p>
+          <div class="plan-list" id="planList">
+            <div class="empty">No plan yet.</div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <span class="section-num">03</span>
+            <h2>Log</h2>
+          </div>
+          <p class="column-note">Stage and tool activity from the running agent.</p>
+          <div class="trace-list" id="traceList">
+            <div class="empty">No activity yet.</div>
+          </div>
+        </section>
+
+        <section class="panel result-panel" id="resultPanel" hidden>
+          <div class="result-top">
+            <div class="result-heading">
+              <div class="result-title-row">
+                <span class="section-num">04</span>
+                <h2 id="resultTitle">Document ready</h2>
+              </div>
+              <p id="resultSubtitle">The file has been rendered and stored.</p>
+            </div>
+            <button class="download" id="downloadBtn" type="button">Download .docx</button>
+          </div>
+
+          <div class="error-banner" id="errorBanner" hidden></div>
+
+          <div class="result-facts">
+            <div class="fact"><span>Document type</span><strong id="factDocType">-</strong></div>
+            <div class="fact"><span>Plan source</span><strong id="factPlanSource">-</strong></div>
+            <div class="fact"><span>Review</span><strong id="factReflection">-</strong></div>
+          </div>
+
+          <div class="result-body">
+            <div class="result-section wide">
+              <h3>Objective</h3>
+              <p class="result-note" id="resultObjective">-</p>
+            </div>
+            <div class="result-section">
+              <h3>Assumptions</h3>
+              <div class="chip-list" id="assumptionList"></div>
+            </div>
+            <div class="result-section">
+              <h3>Missing information</h3>
+              <div class="chip-list" id="missingList"></div>
+            </div>
+            <div class="result-section">
+              <h3>Conflicts addressed</h3>
+              <div class="chip-list" id="conflictList"></div>
+            </div>
+            <div class="result-section">
+              <h3>Warnings</h3>
+              <div class="chip-list" id="warningList"></div>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <footer class="colophon">
+      <span>Productivity</span>
+      <span>Local demo / Microsoft Word output</span>
+      <span>Files written to data/documents</span>
+    </footer>
+  </div>
+
+  <script>
+    const examples = {
+      standard: "Write a project plan for launching a customer support chatbot at a mid-size retail company. The target is a twelve-week launch with a team of five, working within a fixed operating budget. Include the budget, delivery timeline, risks, and immediate next steps.",
+      complex: "Prepare a board-level decision memo on replacing our legacy billing platform. We must deliver before Q1, the current contract expires in March, and the project must satisfy data-protection and financial-control requirements. The available budget and the compliance scope are both unresolved, and the fastest option is not the most compliant. Compare credible options and recommend a prioritized path.",
+      smoke: "Turn my notes from this morning's weekly operations sync into proper meeting minutes. The notes are: shipped the returns portal fix; support queue is still high after the holiday; Priya raised that nobody owns the chatbot knowledge base; we agreed to freeze non-critical releases on Fridays; next sync is Tuesday. I did not capture the attendee list or the exact date."
+    };
+
+    const el = {
+      apiState: document.getElementById("apiState"),
+      request: document.getElementById("request"),
+      charCount: document.getElementById("charCount"),
+      runBtn: document.getElementById("runBtn"),
+      resetBtn: document.getElementById("resetBtn"),
+      apiKey: document.getElementById("apiKey"),
+      statusDot: document.getElementById("statusDot"),
+      statusTitle: document.getElementById("statusTitle"),
+      statusText: document.getElementById("statusText"),
+      progressBar: document.getElementById("progressBar"),
+      taskCount: document.getElementById("taskCount"),
+      doneCount: document.getElementById("doneCount"),
+      runId: document.getElementById("runId"),
+      planList: document.getElementById("planList"),
+      planSource: document.getElementById("planSource"),
+      traceList: document.getElementById("traceList"),
+      resultPanel: document.getElementById("resultPanel"),
+      resultTitle: document.getElementById("resultTitle"),
+      resultSubtitle: document.getElementById("resultSubtitle"),
+      downloadBtn: document.getElementById("downloadBtn"),
+      errorBanner: document.getElementById("errorBanner"),
+      factDocType: document.getElementById("factDocType"),
+      factPlanSource: document.getElementById("factPlanSource"),
+      factReflection: document.getElementById("factReflection"),
+      resultObjective: document.getElementById("resultObjective"),
+      assumptionList: document.getElementById("assumptionList"),
+      missingList: document.getElementById("missingList"),
+      conflictList: document.getElementById("conflictList"),
+      warningList: document.getElementById("warningList")
+    };
+
+    const state = {
+      busy: false,
+      runId: "",
+      documentUrl: "",
+      filename: "",
+      totalTasks: 0,
+      taskRows: new Map(),
+      doneTasks: 0,
+      planSource: "",
+      analysis: null,
+      finalEvent: null,
+      apiIssue: ""
+    };
+
+    function authHeaders(extra = {}) {
+      const headers = { ...extra };
+      const key = el.apiKey.value.trim();
+      if (key) headers["X-API-Key"] = key;
+      return headers;
+    }
+
+    function setApiState(kind, label) {
+      el.apiState.className = "pill " + kind;
+      el.apiState.textContent = label;
+    }
+
+    function apiFailureLabel(message) {
+      const text = String(message || "").toLowerCase();
+      if (/credit|quota|billing|payment|insufficient|out of tokens|token limit/.test(text)) {
+        return "Out of tokens";
+      }
+      if (/rate limit|too many requests|429/.test(text)) {
+        return "Rate limited";
+      }
+      if (/401|403|unauthori[sz]ed|invalid api key|incorrect api key/.test(text)) {
+        return "Key rejected";
+      }
+      return "";
+    }
+
+    function noteApiFailure(message) {
+      const label = apiFailureLabel(message);
+      if (!label) return;
+      state.apiIssue = label;
+      setApiState("down", label);
+    }
+
+    function checkReady() {
+      fetch("/ready", { headers: authHeaders() })
+        .then((response) => {
+          if (!response.ok) throw new Error("not ready");
+          if (!state.apiIssue) setApiState("ready", "API ready");
+        })
+        .catch(() => setApiState("down", state.apiIssue || "API unavailable"));
+    }
+
+    function setStatus(kind, title, text) {
+      el.statusDot.className = "status-dot" + (kind ? " " + kind : "");
+      el.statusTitle.textContent = title;
+      el.statusText.textContent = text;
+    }
+
+    function setBusy(busy) {
+      state.busy = busy;
+      el.runBtn.disabled = busy;
+      el.runBtn.textContent = busy ? "Working..." : "Generate document";
+    }
+
+    function updateProgress() {
+      const pct = state.totalTasks
+        ? Math.round((state.doneTasks / state.totalTasks) * 100)
+        : 0;
+      el.progressBar.style.width = pct + "%";
+      el.taskCount.textContent = String(state.totalTasks);
+      el.doneCount.textContent = String(state.doneTasks);
+    }
+
+    function updateCharCount() {
+      el.charCount.textContent = String(el.request.value.length);
+    }
+
+    function clearChildren(node) {
+      while (node.firstChild) node.removeChild(node.firstChild);
+    }
+
+    function addEmpty(node, text) {
+      clearChildren(node);
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = text;
+      node.appendChild(empty);
+    }
+
+    function addChip(node, text, warning = false) {
+      const chip = document.createElement("span");
+      chip.className = "chip" + (warning ? " warning" : "");
+      chip.textContent = text;
+      node.appendChild(chip);
+    }
+
+    function resetRun() {
+      state.runId = "";
+      state.documentUrl = "";
+      state.filename = "";
+      state.totalTasks = 0;
+      state.taskRows.clear();
+      state.doneTasks = 0;
+      state.planSource = "";
+      state.analysis = null;
+      state.finalEvent = null;
+      el.statusDot.className = "status-dot";
+      el.statusTitle.textContent = "Ready for a request";
+      el.statusText.textContent = "Choose a case or write a brief. Nothing runs until you start it.";
+      el.progressBar.style.width = "0%";
+      el.taskCount.textContent = "0";
+      el.doneCount.textContent = "0";
+      el.runId.textContent = "not started";
+      el.planSource.textContent = "waiting";
+      el.planSource.className = "badge";
+      el.resultPanel.hidden = true;
+      el.errorBanner.hidden = true;
+      el.errorBanner.textContent = "";
+      el.downloadBtn.disabled = true;
+      el.downloadBtn.textContent = "Download .docx";
+      clearChildren(el.assumptionList);
+      clearChildren(el.missingList);
+      clearChildren(el.conflictList);
+      clearChildren(el.warningList);
+      el.factDocType.textContent = "-";
+      el.factPlanSource.textContent = "-";
+      el.factReflection.textContent = "-";
+      el.resultObjective.textContent = "-";
+      addEmpty(el.planList, "No plan yet.");
+      addEmpty(el.traceList, "No events yet.");
+      updateProgress();
+    }
+
+    function showError(message) {
+      el.statusDot.className = "status-dot error";
+      el.statusTitle.textContent = "Run failed";
+      el.statusText.textContent = message;
+      el.errorBanner.hidden = false;
+      el.errorBanner.textContent = message;
+      state.busy = false;
+      el.runBtn.disabled = false;
+      el.runBtn.textContent = "Generate document";
+    }
+
+    function renderPlan(items) {
+      clearChildren(el.planList);
+      state.taskRows.clear();
+      state.totalTasks = items.length;
+      state.doneTasks = items.filter((item) => item.status === "done").length;
+      for (const item of items) {
+        const row = document.createElement("div");
+        row.className = "task " + (item.status || "pending");
+
+        const id = document.createElement("div");
+        id.className = "task-id";
+        id.textContent = item.id;
+
+        const main = document.createElement("div");
+        const title = document.createElement("div");
+        title.className = "task-title";
+        title.textContent = item.title;
+        title.title = item.acceptance || item.title;
+        const meta = document.createElement("div");
+        meta.className = "task-meta";
+        const deps = item.depends_on && item.depends_on.length
+          ? "depends on " + item.depends_on.join(", ")
+          : "no dependencies";
+        meta.textContent = (item.kind || "task") + " | " + deps;
+        main.append(title, meta);
+        if (item.section_title) {
+          const section = document.createElement("div");
+          section.className = "task-meta";
+          section.textContent = "section: " + item.section_title;
+          main.appendChild(section);
+        }
+
+        const badge = document.createElement("span");
+        badge.className = "badge " + (item.status || "pending");
+        badge.textContent = item.status || "pending";
+
+        row.append(id, main, badge);
+        el.planList.appendChild(row);
+        state.taskRows.set(item.id, { row, badge, error: null });
+      }
+      updateProgress();
+    }
+
+    function updateTask(data) {
+      const id = data.task_id;
+      if (!id) return;
+      let entry = state.taskRows.get(id);
+      if (!entry) {
+        const item = {
+          id,
+          title: data.title || id,
+          kind: data.kind || "task",
+          depends_on: [],
+          status: data.status || "pending"
+        };
+        renderPlan([
+          ...Array.from(state.taskRows.values()).map(({ row }) => ({
+            id: row.querySelector(".task-id")?.textContent || "",
+            title: row.querySelector(".task-title")?.textContent || "",
+            kind: "task",
+            depends_on: [],
+            status: row.className.replace("task ", "")
+          })),
+          item
+        ]);
+        entry = state.taskRows.get(id);
+      }
+      if (!entry) return;
+
+      const status = data.status || (
+        data.event === "started" ? "running" :
+        data.event === "skipped" ? "skipped" : "done"
+      );
+      entry.row.className = "task " + status;
+      entry.badge.className = "badge " + status;
+      entry.badge.textContent = status;
+      if (data.error) {
+        if (!entry.error) {
+          entry.error = document.createElement("div");
+          entry.error.className = "task-error";
+          entry.row.querySelector("div:nth-child(2)")?.appendChild(entry.error);
+        }
+        entry.error.textContent = data.error;
+      }
+      state.doneTasks = Array.from(state.taskRows.values())
+        .filter(({ row }) => row.classList.contains("done"))
+        .length;
+      updateProgress();
+    }
+
+    function addTrace(event) {
+      if (el.traceList.querySelector(".empty")) clearChildren(el.traceList);
+      const row = document.createElement("div");
+      const isFailure = event.stage === "run" && event.message && event.message.startsWith("Run failed");
+      const isSuccess = event.stage === "run" && event.message === "Run completed";
+      row.className = "trace-row" + (isFailure ? " error" : isSuccess ? " success" : "");
+
+      const stage = document.createElement("span");
+      stage.className = "trace-stage";
+      stage.textContent = event.stage || "event";
+
+      const message = document.createElement("span");
+      message.className = "trace-msg";
+      message.textContent = event.message || "";
+
+      const duration = document.createElement("span");
+      duration.className = "trace-ms";
+      duration.textContent = Number.isFinite(event.duration_ms)
+        ? event.duration_ms + " ms"
+        : "";
+
+      row.append(stage, message, duration);
+      el.traceList.appendChild(row);
+      el.traceList.scrollTop = el.traceList.scrollHeight;
+    }
+
+    function setPlanSource(source, cached) {
+      state.planSource = source || "unknown";
+      el.planSource.textContent = state.planSource + (cached ? " / cache" : "");
+      el.planSource.className = "badge " + (state.planSource === "fallback" ? "skipped" : "done");
+    }
+
+    function handleAnalysis(data) {
+      state.analysis = data;
+      el.factDocType.textContent = String(data.doc_type || "-").replaceAll("_", " ");
+      el.resultObjective.textContent = data.objective || "-";
+      clearChildren(el.assumptionList);
+      clearChildren(el.missingList);
+      clearChildren(el.conflictList);
+      for (const item of data.assumption_items || []) addChip(el.assumptionList, item);
+      for (const item of data.missing_items || []) addChip(el.missingList, item, true);
+      for (const item of data.conflict_items || []) addChip(el.conflictList, item, true);
+      if (!(data.assumption_items || []).length) {
+        addChip(el.assumptionList, "No explicit assumptions");
+      }
+      if (!(data.missing_items || []).length) {
+        addChip(el.missingList, "None identified");
+      }
+      if (!(data.conflict_items || []).length) {
+        addChip(el.conflictList, "No conflicts detected");
+      }
+    }
+
+    function finishSuccess(data) {
+      state.finalEvent = data;
+      state.documentUrl = data.document_url || "";
+      state.filename = data.filename || "document.docx";
+      el.runId.textContent = state.runId || "unknown";
+      el.factPlanSource.textContent = data.plan_source || state.planSource || "-";
+      const reflection = data.reflection_passed;
+      el.factReflection.textContent =
+        reflection === true ? "passed" : reflection === false ? "issues found" : "not run";
+      clearChildren(el.warningList);
+      const warnings = data.warning_items || [];
+      for (const item of warnings) addChip(el.warningList, item, true);
+      if (!warnings.length) addChip(el.warningList, "No warnings");
+      if (state.analysis) handleAnalysis(state.analysis);
+
+      const status = data.status || "completed";
+      const withWarnings = status === "completed_with_warnings";
+      setStatus(
+        "success",
+        withWarnings ? "Completed with warnings" : "Document ready",
+        withWarnings
+          ? "The .docx is ready. Read the warnings before sharing it."
+          : "The file has been planned, written, reviewed, and rendered."
+      );
+      const warningIssue = (data.warning_items || [])
+        .map((item) => apiFailureLabel(item))
+        .find(Boolean);
+      state.apiIssue = warningIssue || "";
+      setApiState(warningIssue ? "down" : "ready", warningIssue || "API ready");
+      el.resultTitle.textContent = withWarnings ? "Document ready with warnings" : "Document ready";
+      el.resultSubtitle.textContent = "Run " + state.runId + " finished.";
+      el.resultPanel.hidden = false;
+      el.downloadBtn.disabled = !state.documentUrl;
+      el.downloadBtn.textContent = state.documentUrl ? "Download .docx" : "No document";
+      setBusy(false);
+      el.progressBar.style.width = "100%";
+      el.resultPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    function finishFailure(data) {
+      state.finalEvent = data;
+      const message = data.error || "The agent could not complete the request.";
+      showError(message);
+      noteApiFailure(message);
+      clearChildren(el.warningList);
+      for (const item of data.warning_items || []) addChip(el.warningList, item, true);
+      el.resultPanel.hidden = false;
+      el.resultTitle.textContent = "Run failed";
+      el.resultSubtitle.textContent = "Read the error and warnings, then try again.";
+      el.factReflection.textContent = "not completed";
+      el.downloadBtn.disabled = true;
+      el.downloadBtn.textContent = "No document";
+    }
+
+    function handleEvent(event) {
+      if (!event || event.heartbeat) return;
+      addTrace(event);
+      const data = event.data || {};
+
+      if (event.stage === "run") {
+        if (event.message === "Run started") {
+          setStatus("running", "Working", "Reading the brief and choosing a document type.");
+        } else if (event.message === "Run completed") {
+          finishSuccess(data);
+        } else if (event.message === "Run failed" || event.message === "Run timed out") {
+          finishFailure(data);
+        }
+        return;
+      }
+
+      if (event.stage === "analysis") {
+        handleAnalysis(data);
+        setStatus("running", "Brief read", "The document type, assumptions, and conflicts are set.");
+      } else if (event.stage === "reconcile") {
+        handleAnalysis(data);
+      } else if (event.stage === "plan") {
+        setPlanSource(data.source, data.cached);
+        if (Array.isArray(data.task_items)) renderPlan(data.task_items);
+        setStatus("running", "Plan ready", "Executing " + (data.tasks || state.totalTasks) + " planned tasks.");
+      } else if (event.stage === "task") {
+        updateTask(data);
+        if (data.event === "started") {
+          setStatus("running", "Working", "Running " + (data.task_id || "task") + ": " + (data.title || ""));
+        }
+      } else if (event.stage === "execute") {
+        setStatus("running", "Drafting", "Composing the document from validated results.");
+      } else if (event.stage === "compose") {
+        setStatus("running", "Reviewing", "Checking the draft and applying repairs.");
+      } else if (event.stage === "reflection") {
+        setStatus("running", "Reviewing", event.message || "Checking the draft.");
+      } else if (event.stage === "render" || event.stage === "store") {
+        setStatus("running", "Rendering", "Producing and storing the Word document.");
+      }
+    }
+
+    async function errorMessage(response) {
+      try {
+        const body = await response.json();
+        return body.error?.message || body.detail || ("Request failed with HTTP " + response.status);
+      } catch {
+        return "Request failed with HTTP " + response.status;
+      }
+    }
+
+    async function streamRun(url) {
+      const response = await fetch(url, {
+        headers: authHeaders({ "Accept": "text/event-stream" })
+      });
+      if (!response.ok) throw new Error(await errorMessage(response));
+      if (!response.body) throw new Error("Streaming is not supported by this browser.");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let sawFinal = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let boundary = buffer.indexOf("\n\n");
+        while (boundary !== -1) {
+          const chunk = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          boundary = buffer.indexOf("\n\n");
+          const dataLines = chunk
+            .split("\n")
+            .filter((line) => line.startsWith("data: "))
+            .map((line) => line.slice(6));
+          if (!dataLines.length) continue;
+          let event;
+          try {
+            event = JSON.parse(dataLines.join("\n"));
+          } catch {
+            continue;
+          }
+          if (event.stage === "run" && (event.message === "Run completed" || event.message === "Run failed" || event.message === "Run timed out")) {
+            sawFinal = true;
+          }
+          handleEvent(event);
+        }
+      }
+
+      if (!sawFinal && state.busy) {
+        showError("The event stream ended before the run completed.");
+      }
+    }
+
+    async function startRun() {
+      if (state.busy) return;
+      const request = el.request.value.trim();
+      if (!request) {
+        showError("Write a request or choose a case.");
+        el.request.focus();
+        return;
+      }
+
+      resetRun();
+      setBusy(true);
+      setStatus("running", "Submitting", "The agent is starting its run.");
+      el.errorBanner.hidden = true;
+
+      try {
+        const response = await fetch("/runs", {
+          method: "POST",
+          headers: authHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ request })
+        });
+        if (!response.ok) throw new Error(await errorMessage(response));
+        const handle = await response.json();
+        state.runId = handle.run_id || "";
+        el.runId.textContent = state.runId || "pending";
+        await streamRun(handle.events_url);
+      } catch (error) {
+        const text = error instanceof Error ? error.message : "Could not start the run.";
+        showError(text);
+        noteApiFailure(text);
+      } finally {
+        if (state.busy) {
+          state.busy = false;
+          el.runBtn.disabled = false;
+          el.runBtn.textContent = "Generate document";
+        }
+      }
+    }
+
+    async function downloadDocument() {
+      if (!state.documentUrl) return;
+      el.downloadBtn.disabled = true;
+      const label = el.downloadBtn.textContent;
+      el.downloadBtn.textContent = "Preparing...";
+      try {
+        const response = await fetch(state.documentUrl, { headers: authHeaders() });
+        if (!response.ok) throw new Error(await errorMessage(response));
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = state.filename || "document.docx";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(objectUrl);
+      } catch (error) {
+        showError(error instanceof Error ? error.message : "Could not download the document.");
+      } finally {
+        el.downloadBtn.disabled = false;
+        el.downloadBtn.textContent = label;
+      }
+    }
+
+    function usePreset(name) {
+      el.request.value = examples[name] || "";
+      updateCharCount();
+      el.request.focus();
+      el.request.setSelectionRange(el.request.value.length, el.request.value.length);
+    }
+
+    document.querySelectorAll("[data-preset]").forEach((button) => {
+      button.addEventListener("click", () => usePreset(button.dataset.preset));
+    });
+    el.request.addEventListener("input", updateCharCount);
+    el.runBtn.addEventListener("click", startRun);
+    el.resetBtn.addEventListener("click", () => {
+      if (state.busy) return;
+      el.request.value = "";
+      updateCharCount();
+      resetRun();
+    });
+    el.downloadBtn.addEventListener("click", downloadDocument);
+    el.request.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") startRun();
+    });
+
+    const savedKey = sessionStorage.getItem("productivity_api_key");
+    if (savedKey) el.apiKey.value = savedKey;
+    el.apiKey.addEventListener("input", () => {
+      if (el.apiKey.value.trim()) {
+        sessionStorage.setItem("productivity_api_key", el.apiKey.value.trim());
+      } else {
+        sessionStorage.removeItem("productivity_api_key");
+      }
+    });
+
+    checkReady();
+    window.setInterval(() => {
+      if (!document.hidden) checkReady();
+    }, 45000);
+    window.addEventListener("focus", checkReady);
+
+    updateCharCount();
+    resetRun();
+  </script>
+</body>
+</html>

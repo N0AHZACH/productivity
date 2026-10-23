@@ -28,7 +28,7 @@ def _spec() -> DocumentSpec:
         subtitle="Prepared for the executive team",
         doc_type=DocType.BUSINESS_REPORT,
         metadata={
-            "author": "DocPilot",
+            "author": "Productivity",
             "date": "2026-10-22",
             "version": "2.0",
         },
@@ -63,7 +63,7 @@ def _spec() -> DocumentSpec:
 
 
 def _render(spec: DocumentSpec) -> tuple[Document, bytes]:
-    theme = Theme(footer_text="DocPilot Confidential")
+    theme = Theme(footer_text="Productivity Confidential")
     data = DocxRenderer(theme).render(spec)
     return Document(BytesIO(data)), data
 
@@ -102,7 +102,7 @@ def test_table_shape_and_header_furniture() -> None:
     header_text = "\n".join(paragraph.text for paragraph in section.header.paragraphs)
     footer_text = "\n".join(paragraph.text for paragraph in section.footer.paragraphs)
     assert "Operations Readiness Review" in header_text
-    assert "DocPilot Confidential" in footer_text
+    assert "Productivity Confidential" in footer_text
     assert "Page" in footer_text and "of" in footer_text
     assert "PAGE" in section.footer.paragraphs[0]._p.xml
     assert "NUMPAGES" in section.footer.paragraphs[0]._p.xml

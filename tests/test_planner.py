@@ -46,7 +46,22 @@ async def test_valid_plan_passes_untouched() -> None:
     assert result == valid
     assert len(llm.calls) == 1
     assert llm.calls[0].max_tokens == 2800
+    assert llm.calls[0].tier == "fast"
     assert get_plan_source() == "llm"
+
+
+@pytest.mark.asyncio
+async def test_planner_tier_is_configurable() -> None:
+    analysis = _analysis()
+    valid = fallback_plan(analysis)
+    llm = FakeLLM.with_schemas({TaskList: valid})
+    await plan(
+        analysis,
+        default_registry(),
+        llm,
+        Settings(planning_tier="strong"),
+    )
+    assert llm.calls[0].tier == "strong"
 
 
 @pytest.mark.asyncio

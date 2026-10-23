@@ -13,7 +13,7 @@ from app.core.config import Settings
 from app.core.errors import PlanInvalid, ToolError
 from app.llm.fake import FakeLLM
 from app.models.common import DocType, RunStatus, TaskStatus
-from app.models.document import Paragraph, SectionDraft
+from app.models.document import Paragraph, SectionDraft, Table
 from app.models.plan import Task, TaskList
 from app.models.state import AgentState, Analysis
 from app.tools.registry import ToolRegistry
@@ -123,6 +123,131 @@ async def test_diamond_plan_runs_in_order_and_parallel() -> None:
     assert plan.tasks[3].result["heading"] == "Synthesis"
     assert any(kwargs.get("event") == "started" for _, kwargs in emitted)
     assert any(kwargs.get("event") == "finished" for _, kwargs in emitted)
+    section_calls = [call for call in llm.calls if call.schema is SectionDraft]
+    assert section_calls
+    assert all(call.tier == "strong" for call in section_calls)
+
+
+@pytest.mark.asyncio
+async def test_dependent_task_starts_before_unrelated_slow_sibling_finishes() -> None:
+    registry = ToolRegistry()
+    starts: dict[str, float] = {}
+    ends: dict[str, float] = {}
+
+    class DelayArgs(BaseModel):
+        label: str
+        delay_s: float
+
+    class EmptyArgs(BaseModel):
+        pass
+
+    @registry.register("fast", "Return immediately. Use to unlock a dependent.", EmptyArgs)
+    def fast(args: EmptyArgs) -> dict[str, Any]:
+        return {"ready": True}
+
+    @registry.register("delay", "Sleep for the requested time. Use in DAG tests.", DelayArgs)
+    async def delay(args: DelayArgs) -> dict[str, Any]:
+        starts[args.label] = time.monotonic()
+        await asyncio.sleep(args.delay_s)
+        ends[args.label] = time.monotonic()
+        return {"label": args.label}
+
+    plan = TaskList(
+        objective="Dynamic DAG",
+        doc_type=DocType.PROJECT_PLAN,
+        tasks=[
+            Task(
+                id="t1",
+                title="Fast",
+                description="Fast",
+                kind="tool",
+                tool="fast",
+                acceptance="Ready.",
+            ),
+            Task(
+                id="t2",
+                title="Slow",
+                description="Slow",
+                kind="tool",
+                tool="delay",
+                tool_args={"label": "slow", "delay_s": 0.08},
+                acceptance="Runs.",
+            ),
+            Task(
+                id="t3",
+                title="Dependent",
+                description="Needs only t1",
+                kind="tool",
+                tool="delay",
+                tool_args={"label": "dependent", "delay_s": 0.01},
+                depends_on=["t1"],
+                acceptance="Runs.",
+            ),
+        ],
+    )
+    state = _state(plan)
+
+    await execute(
+        state,
+        registry,
+        FakeLLM(),
+        Settings(max_concurrency=4),
+        lambda *args, **kwargs: None,
+    )
+
+    assert all(task.status is TaskStatus.DONE for task in plan.tasks)
+    assert starts["dependent"] < ends["slow"]
+
+
+@pytest.mark.asyncio
+async def test_executor_respects_max_concurrency() -> None:
+    registry = ToolRegistry()
+    active = 0
+    peak = 0
+
+    class EmptyArgs(BaseModel):
+        pass
+
+    @registry.register(
+        "active_tool",
+        "Track concurrent calls. Use in concurrency tests.",
+        EmptyArgs,
+    )
+    async def active_tool(args: EmptyArgs) -> dict[str, bool]:
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.02)
+        active -= 1
+        return {"ok": True}
+
+    plan = TaskList(
+        objective="Bounded",
+        doc_type=DocType.PROJECT_PLAN,
+        tasks=[
+            Task(
+                id=f"t{index}",
+                title=f"Task {index}",
+                description="Run bounded.",
+                kind="tool",
+                tool="active_tool",
+                acceptance="Runs.",
+            )
+            for index in range(1, 7)
+        ],
+    )
+    state = _state(plan)
+
+    await execute(
+        state,
+        registry,
+        FakeLLM(),
+        Settings(max_concurrency=2),
+        lambda *args, **kwargs: None,
+    )
+
+    assert all(task.status is TaskStatus.DONE for task in plan.tasks)
+    assert peak == 2
 
 
 @pytest.mark.asyncio
@@ -283,6 +408,62 @@ async def test_composer_orders_sections_and_adds_executive_summary() -> None:
     assert state.spec == spec
     assert len(llm.calls) == 1
     assert llm.calls[0].tier == "fast"
+
+
+@pytest.mark.asyncio
+async def test_composer_prompt_includes_table_rankings() -> None:
+    draft = SectionDraft(
+        heading="Options Considered",
+        blocks=[
+            Paragraph(text="Three options were scored against the criteria."),
+            Table(
+                caption="Weighted option scores",
+                columns=["Option", "Weighted Score", "Rank"],
+                rows=[
+                    ["SaaS billing platform", "6.45", "1"],
+                    ["Hybrid legacy upgrade", "6.20", "2"],
+                ],
+            ),
+        ],
+    )
+    analysis = Analysis(
+        doc_type=DocType.DECISION_MEMO,
+        objective="Recommend a billing platform.",
+        audience="Board",
+    )
+    plan = TaskList(
+        objective=analysis.objective,
+        doc_type=analysis.doc_type,
+        tasks=[
+            Task(
+                id="t1",
+                title="Options",
+                description="Compare the options.",
+                kind="write_section",
+                section_title="Options Considered",
+                acceptance="Options are ranked.",
+                status=TaskStatus.DONE,
+                result=draft.model_dump(mode="json"),
+            )
+        ],
+    )
+    state = AgentState(
+        run_id="run3",
+        request="Recommend a platform.",
+        analysis=analysis,
+        plan=plan,
+        status=RunStatus.RUNNING,
+    )
+    llm = FakeLLM.with_schemas(
+        {CompositionDraft: {"title": "Billing Decision", "executive_summary": "Summary."}}
+    )
+
+    await compose(state, llm, Settings())
+
+    prompt = llm.calls[0].messages[-1]["content"]
+    assert "Weighted option scores" in prompt
+    assert "SaaS billing platform | 6.45 | 1" in prompt
+    assert "Hybrid legacy upgrade | 6.20 | 2" in prompt
 
 
 @pytest.mark.asyncio

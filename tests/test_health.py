@@ -39,3 +39,18 @@ async def test_generated_request_id_is_present() -> None:
         response = await client.get("/health")
 
     assert response.headers["X-Request-ID"]
+
+
+@pytest.mark.asyncio
+async def test_demo_ui_is_served() -> None:
+    transport = httpx.ASGITransport(app=create_app())
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        root = await client.get("/")
+        demo = await client.get("/demo")
+
+    assert root.status_code == 200
+    assert root.headers["content-type"].startswith("text/html")
+    assert "Productivity" in root.text
+    assert "Generate document" in root.text
+    assert demo.status_code == 200
+    assert demo.text == root.text

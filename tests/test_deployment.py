@@ -19,6 +19,7 @@ def test_docker_context_contains_build_and_runtime_markdown() -> None:
     required = [
         "README.md",
         "pyproject.toml",
+        "app/static/index.html",
         *(f"app/prompts/{path.name}" for path in (ROOT / "app/prompts").glob("*.md")),
     ]
 

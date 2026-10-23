@@ -18,6 +18,7 @@ from app.models.document import (
     Paragraph,
     Section,
     SectionDraft,
+    Table,
 )
 from app.models.plan import Task
 from app.models.state import AgentState
@@ -82,9 +83,15 @@ def _outline(drafts: list[tuple[Task, SectionDraft]]) -> str:
     outline = []
     for task, draft in drafts:
         preview_parts: list[str] = []
-        for block in draft.blocks[:3]:
+        for block in draft.blocks[:4]:
             if isinstance(block, Paragraph):
                 preview_parts.append(block.text)
+            elif isinstance(block, Table):
+                # Tables carry rankings and totals the summary must not contradict.
+                if block.caption:
+                    preview_parts.append(block.caption)
+                preview_parts.append(" | ".join(block.columns))
+                preview_parts.extend(" | ".join(row) for row in block.rows[:6])
             elif hasattr(block, "text"):
                 preview_parts.append(str(block.text))
             elif hasattr(block, "items"):
@@ -123,6 +130,7 @@ async def _generate_composition(
     state: AgentState,
     drafts: list[tuple[Task, SectionDraft]],
     llm: LLMClient,
+    settings: Settings,
 ) -> CompositionDraft:
     analysis_json = (
         json.dumps(state.analysis.model_dump(mode="json"), indent=2) if state.analysis else "{}"
@@ -137,7 +145,12 @@ async def _generate_composition(
         },
     ]
     try:
-        return await llm.complete_json(messages, CompositionDraft, tier="fast", max_tokens=2048)
+        return await llm.complete_json(
+            messages,
+            CompositionDraft,
+            tier=settings.composition_tier,
+            max_tokens=2048,
+        )
     except (LLMOutputInvalid, LLMProviderError) as exc:
         logger.warning("composition_fallback", error=str(exc))
         state.warnings.append(f"Executive summary used deterministic fallback: {exc}")
@@ -186,7 +199,7 @@ async def compose(
     if not drafts:
         raise PlanInvalid("No sections were successfully written; cannot compose a document")
 
-    composition = await _generate_composition(state, drafts, llm)
+    composition = await _generate_composition(state, drafts, llm, settings)
     title = composition.title.strip() or _fallback_composition(state).title
     sections: list[Section] = [
         Section(

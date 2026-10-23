@@ -40,7 +40,7 @@ def _full_spec() -> DocumentSpec:
         title="Cloud Migration Proposal",
         subtitle="A safe path to the cloud",
         doc_type=DocType.PROPOSAL,
-        metadata={"author": "DocPilot", "date": "2026-10-22", "version": "1.0"},
+        metadata={"author": "Productivity", "date": "2026-10-22", "version": "1.0"},
         assumptions=["Budget not provided; assuming 120,000 USD."],
         sections=[
             Section(

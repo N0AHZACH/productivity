@@ -165,7 +165,7 @@ async def plan(
             candidate = await llm.complete_json(
                 messages,
                 TaskList,
-                tier="strong",
+                tier=settings.planning_tier,
                 max_tokens=settings.llm_max_output_tokens,
                 max_repairs=0,
             )

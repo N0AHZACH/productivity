@@ -13,6 +13,7 @@ from app.agent.checks import (
     run_checks,
     section_text,
 )
+from app.agent.reconcile import ensure_budget_table_totals
 from app.agent.text_utils import titles_match
 from app.core.config import Settings
 from app.core.errors import LLMOutputInvalid, LLMProviderError
@@ -123,7 +124,7 @@ async def _critic_issues(
     review = await llm.complete_json(
         messages,
         CriticReview,
-        tier="strong",
+        tier=settings.reflection_tier,
         max_tokens=settings.llm_max_output_tokens,
     )
     return review.issues
@@ -392,6 +393,9 @@ async def reflect(
         fixed, unresolved = await _run_repairs(
             major, state, llm, settings, writer, emit
         )
+        # Repairs rewrite whole sections from model output, so a repaired budget table can
+        # lose the deterministic summary rows. Re-apply reconciliation before re-checking.
+        ensure_budget_table_totals(state)
         major_after = [
             issue
             for issue in run_checks(state.spec, state.plan, state.analysis)

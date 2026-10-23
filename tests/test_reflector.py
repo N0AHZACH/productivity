@@ -10,7 +10,9 @@ from app.core.config import Settings
 from app.llm.fake import FakeLLM
 from app.models.common import DocType, TaskStatus
 from app.models.document import (
+    BulletList,
     DocumentSpec,
+    Heading,
     Paragraph,
     Section,
     SectionDraft,
@@ -188,6 +190,480 @@ def test_budget_assumption_consistency(amount: str, has_conflict: bool) -> None:
         assert "151,800.00" in unsupported[0].description
 
 
+def test_allocated_budget_line_is_not_treated_as_total_budget() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    state.spec.assumptions = ["Available budget is fixed at 150,000 USD."]
+    state.analysis.known_facts.append("Marketing allocation of $15,000.")
+    risks = next(
+        section for section in state.spec.sections if section.heading == "Risks and Mitigations"
+    )
+    risks.blocks.append(Paragraph(text="Marketing budget allocation: $15,000."))
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+
+    assert not any("assumed budget" in issue.description for issue in issues)
+    assert not any("not supported" in issue.description for issue in issues)
+
+
+def test_fixed_budget_without_amount_is_detected() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    budget = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Budget and Resourcing"
+    )
+    budget.blocks.append(
+        Paragraph(text="Delivery will remain within the approved fixed operating budget.")
+    )
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+    matches = [issue for issue in issues if "fixed/approved budget" in issue.description]
+
+    assert matches
+    assert matches[0].section_id == budget.id
+
+
+def test_fixed_budget_with_quantified_assumption_is_clear() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    state.spec.assumptions = ["The fixed operating budget is USD 100,000."]
+    budget = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Budget and Resourcing"
+    )
+    budget.blocks.append(
+        Paragraph(text="Delivery will remain within the approved fixed operating budget.")
+    )
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+
+    assert not any("fixed/approved budget" in issue.description for issue in issues)
+
+
+def test_fixed_budget_with_quantified_statement_is_clear() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    budget = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Budget and Resourcing"
+    )
+    budget.blocks.append(
+        Paragraph(
+            text=(
+                "The approved fixed operating budget is USD 100,000, "
+                "to be confirmed by the sponsor."
+            )
+        )
+    )
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+
+    assert not any("fixed/approved budget" in issue.description for issue in issues)
+
+
+def test_budget_fixed_at_amount_is_clear() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    budget = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Budget and Resourcing"
+    )
+    budget.blocks.append(
+        Paragraph(text="The operating budget is fixed at USD 100,000.")
+    )
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+
+    assert not any("fixed/approved budget" in issue.description for issue in issues)
+
+
+def test_budget_total_check_ignores_non_budget_tables() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    budget = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Budget and Resourcing"
+    )
+    budget.blocks.insert(
+        0,
+        Table(
+            columns=["Name", "Role", "Day Rate (USD)", "Allocation (%)"],
+            rows=[["Alex", "Project Manager", "950", "100"]],
+        ),
+    )
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+
+    assert not any("reconcile" in issue.description for issue in issues)
+
+
+def test_unquantified_success_criteria_are_detected() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    objectives = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Objectives and Success Criteria"
+    )
+    objectives.blocks = [
+        Paragraph(text="The plan aims to improve support."),
+        Heading(level=3, text="Measurable Success Criteria"),
+        BulletList(
+            items=[
+                "Increase customer satisfaction.",
+                "Reduce response time by 30%.",
+            ]
+        ),
+    ]
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+    criteria = [issue for issue in issues if "unquantified target" in issue.description]
+
+    assert len(criteria) == 1
+    assert criteria[0].section_id == objectives.id
+    assert "Increase customer satisfaction." in criteria[0].description
+    assert "Reduce response time by 30%." not in criteria[0].description
+
+
+def test_success_criteria_intro_is_not_treated_as_criterion() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    objectives = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Objectives and Success Criteria"
+    )
+    objectives.blocks = [
+        Paragraph(
+            text=(
+                "The primary objective is to successfully launch the chatbot, "
+                "and the following measurable outcomes have been established:"
+            )
+        ),
+        BulletList(
+            items=[
+                "Achieve a containment rate of at least 70% within 30 days.",
+                "Maintain a CSAT of at least 80% for 30 days.",
+            ]
+        ),
+    ]
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+
+    assert not any("unquantified target" in issue.description for issue in issues)
+
+
+def test_qualitative_success_criteria_are_detected() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    objectives = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Objectives and Success Criteria"
+    )
+    objectives.blocks = [
+        Paragraph(text="The plan aims to improve support."),
+        Heading(level=3, text="Key Success Criteria"),
+        BulletList(
+            items=[
+                "Adherence to all financial constraints within the fixed operating budget.",
+                "Effective utilization of the five-person team.",
+                "Resolution of standard retail support use cases.",
+            ]
+        ),
+    ]
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+    criteria = [issue for issue in issues if "unquantified target" in issue.description]
+
+    assert len(criteria) == 1
+    assert criteria[0].section_id == objectives.id
+    assert "Adherence" in criteria[0].description
+    assert "Effective utilization" in criteria[0].description
+
+
+def test_quantified_success_criteria_pass() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    objectives = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Objectives and Success Criteria"
+    )
+    objectives.blocks = [
+        Paragraph(text="The plan targets measurable support improvements."),
+        Heading(level=3, text="Measurable Success Criteria"),
+        BulletList(
+            items=[
+                "Achieve a CSAT of at least 4.2/5 within 30 days.",
+                "Reduce average response time by 30%.",
+            ]
+        ),
+    ]
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+
+    assert not any("unquantified target" in issue.description for issue in issues)
+
+
+def test_team_and_budget_role_mismatch_is_detected() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    workstream = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Workstreams and Governance"
+    )
+    workstream.blocks = [
+        Paragraph(text="The team owns delivery."),
+        Table(
+            columns=["Team Member", "Role", "Workstream"],
+            rows=[
+                ["Alex", "Project Manager", "Governance"],
+                ["Sam", "Data Engineer", "Data"],
+            ],
+        ),
+    ]
+    budget = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Budget and Resourcing"
+    )
+    budget.blocks = [
+        Paragraph(text="The budget reconciles to the tool total."),
+        Table(
+            columns=["Role", "Headcount"],
+            rows=[
+                ["Project Manager", "1"],
+                ["QA Specialist", "1"],
+                ["Total", "100,000"],
+            ],
+        ),
+    ]
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+    role_issues = [issue for issue in issues if "do not align" in issue.description]
+
+    assert role_issues
+    assert role_issues[0].section_id == workstream.id
+    assert "Data Engineer" in role_issues[0].description
+    assert "QA Specialist" in role_issues[0].description
+
+
+def test_owner_role_in_parentheses_is_checked() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    workstream = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Workstreams and Governance"
+    )
+    workstream.blocks = [
+        Table(
+            columns=["Workstream", "Lead Owner"],
+            rows=[
+                ["Requirements", "Jordan Brown (Business Analyst)"],
+                ["Architecture", "Taylor Patel (Solution Architect)"],
+            ],
+        )
+    ]
+    budget = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Budget and Resourcing"
+    )
+    budget.blocks = [
+        Table(
+            columns=["Role", "Headcount"],
+            rows=[
+                ["Project Manager", "1"],
+                ["QA Specialist", "1"],
+                ["Total", "100,000"],
+            ],
+        )
+    ]
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+    role_issues = [issue for issue in issues if "do not align" in issue.description]
+
+    assert role_issues
+    assert "Business Analyst" in role_issues[0].description
+    assert "QA Specialist" in role_issues[0].description
+
+
+def test_team_and_budget_roles_align() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    workstream = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Workstreams and Governance"
+    )
+    workstream.blocks = [
+        Paragraph(text="The team owns delivery."),
+        Table(
+            columns=["Team Member", "Role", "Workstream"],
+            rows=[
+                ["Alex", "Project Manager", "Governance"],
+                ["Sam", "QA Specialist", "Quality"],
+            ],
+        ),
+    ]
+    budget = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Budget and Resourcing"
+    )
+    budget.blocks = [
+        Paragraph(text="The budget reconciles to the tool total."),
+        Table(
+            columns=["Role", "Headcount"],
+            rows=[
+                ["Project Manager", "1"],
+                ["QA Specialist", "1"],
+                ["Total", "100,000"],
+            ],
+        ),
+    ]
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+
+    assert not any("do not align" in issue.description for issue in issues)
+
+
+def test_team_role_mapping_satisfies_budget_alignment() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    workstream = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Workstreams and Governance"
+    )
+    workstream.blocks = [
+        Paragraph(text="The table maps roster roles to operational roles."),
+        Table(
+            columns=["Team Member", "Roster Role", "Operational Role"],
+            rows=[
+                ["Alex", "Project Manager", "Project Manager"],
+                ["Sam", "Data Engineer", "QA Specialist"],
+            ],
+        ),
+    ]
+    budget = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Budget and Resourcing"
+    )
+    budget.blocks = [
+        Paragraph(text="The budget reconciles to the tool total."),
+        Table(
+            columns=["Category", "Description", "Headcount"],
+            rows=[
+                ["Role", "Project Manager", "1"],
+                ["Role", "QA Specialist", "1"],
+                ["Total", "Total Budget", "100,000"],
+            ],
+        ),
+    ]
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+
+    assert not any("do not align" in issue.description for issue in issues)
+
+
+def test_parenthetical_budget_roles_align_with_team_roles() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    workstream = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Workstreams and Governance"
+    )
+    workstream.blocks = [
+        Paragraph(text="The team owns delivery."),
+        Table(
+            columns=["Team Member", "Role", "Workstream"],
+            rows=[
+                ["Alex", "Project Manager", "Governance"],
+                ["Sam", "Business Analyst / QA Specialist", "Quality"],
+                ["Riley", "Solution Architect", "Architecture"],
+                ["Casey", "Software Engineer", "Development"],
+                ["Jordan", "Data Engineer", "Data"],
+            ],
+        ),
+    ]
+    budget = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Budget and Resourcing"
+    )
+    budget.blocks = [
+        Paragraph(text="The budget reconciles to the tool total."),
+        Table(
+            columns=["Description", "Headcount"],
+            rows=[
+                ["Project Manager", "1"],
+                ["Lead Developer (Solution Architect)", "1"],
+                ["Chatbot Engineer (Software Engineer)", "1"],
+                ["QA Specialist", "1"],
+                ["Operations Lead (Data Engineer)", "1"],
+                ["Total Project Budget", "100,000"],
+            ],
+        ),
+    ]
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+
+    assert not any("do not align" in issue.description for issue in issues)
+
+
+def test_workstream_mapping_ignores_budget_roster_table() -> None:
+    state = _make_state()
+    assert state.spec is not None and state.plan is not None and state.analysis is not None
+    workstream = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Workstreams and Governance"
+    )
+    workstream.blocks = [
+        Table(
+            columns=["Team Member", "Role", "Budget Role"],
+            rows=[
+                ["Alex", "Project Manager", "Project Manager"],
+                ["Sam", "Data Engineer", "QA Specialist"],
+            ],
+        )
+    ]
+    budget = next(
+        section
+        for section in state.spec.sections
+        if section.heading == "Budget and Resourcing"
+    )
+    budget.blocks = [
+        Table(
+            columns=["Name", "Role", "Day Rate (USD)"],
+            rows=[["Alex", "Project Manager", "950"], ["Sam", "Data Engineer", "900"]],
+        ),
+        Table(
+            columns=["Role", "Headcount", "Line Total (USD)"],
+            rows=[
+                ["Project Manager", "1", "60,000.00"],
+                ["QA Specialist", "1", "40,000.00"],
+            ],
+        ),
+    ]
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+
+    assert not any("do not align" in issue.description for issue in issues)
+
+
 def test_timeline_dates_must_appear() -> None:
     state = _make_state()
     assert state.plan is not None and state.spec is not None and state.analysis is not None
@@ -206,6 +682,33 @@ def test_timeline_dates_must_appear() -> None:
     issues = run_checks(state.spec, state.plan, state.analysis)
     assert any("2026-01-05" in issue.description for issue in issues)
     assert any("2026-03-30" in issue.description for issue in issues)
+
+
+def test_timeline_dates_are_not_required_without_a_schedule_section() -> None:
+    state = _make_state()
+    assert state.plan is not None and state.spec is not None and state.analysis is not None
+    state.spec.sections = [
+        section
+        for section in state.spec.sections
+        if "timeline" not in section.heading.lower()
+    ]
+    state.plan.tasks.append(
+        Task(
+            id="t20",
+            title="Build timeline",
+            description="Build a timeline.",
+            kind="tool",
+            tool="build_timeline",
+            acceptance="Dates are returned.",
+            status=TaskStatus.DONE,
+            result={"start_date": "2026-01-05", "end_date": "2026-03-30"},
+        )
+    )
+
+    issues = run_checks(state.spec, state.plan, state.analysis)
+
+    assert not any("2026-01-05" in issue.description for issue in issues)
+    assert not any("2026-03-30" in issue.description for issue in issues)
 
 
 def test_conflict_terms_and_missing_assumptions_are_checked() -> None:
@@ -302,6 +805,50 @@ async def test_reflection_repairs_only_the_budget_section() -> None:
 
 
 @pytest.mark.asyncio
+async def test_repair_that_drops_budget_totals_is_reconciled_again() -> None:
+    state = _make_state(budget_total="110000.00", table_total="90,000.00")
+    assert state.plan is not None
+    budget_tool = next(task for task in state.plan.tasks if task.tool == "estimate_budget")
+    budget_tool.result = {
+        "total": "110000.00",
+        "subtotal": "100000.00",
+        "contingency": "10000.00",
+        "contingency_pct": "10.00",
+        "currency": "USD",
+    }
+
+    async def writer(*args: Any, **kwargs: Any) -> SectionDraft:
+        # A rewrite that keeps the line items but drops the summary rows.
+        return SectionDraft(
+            heading="Budget and Resourcing",
+            blocks=[
+                Paragraph(text="The budget reconciles to the tool total."),
+                Table(
+                    columns=["Item", "Amount"],
+                    rows=[["Delivery", "60000.00"], ["Platform", "40000.00"]],
+                ),
+            ],
+        )
+
+    llm = FakeLLM.with_schemas({CriticReview: {"passed": True, "issues": []}})
+    await reflect(state, llm, _settings(), writer, lambda *args, **kwargs: None)
+
+    assert state.spec is not None
+    budget = next(
+        section for section in state.spec.sections if section.heading == "Budget and Resourcing"
+    )
+    table = next(block for block in budget.blocks if isinstance(block, Table))
+    assert [row[0] for row in table.rows[-3:]] == [
+        "Subtotal",
+        "Contingency (10.00%)",
+        "Total Project Budget",
+    ]
+    assert table.rows[-1][-1] == "110,000.00"
+    assert state.reflection[-1].passed is True
+    assert not any("Unresolved review issue" in warning for warning in state.warnings)
+
+
+@pytest.mark.asyncio
 async def test_reflection_reruns_failed_writer_for_missing_section() -> None:
     state = _make_state()
     assert state.spec is not None and state.plan is not None
@@ -391,7 +938,7 @@ async def test_auto_reviews_complex_documents_even_when_checks_pass() -> None:
         return SectionDraft(
             heading=heading,
             blocks=[
-                Paragraph(text=f"{heading} now includes a measurable target."),
+                Paragraph(text=f"{heading} now includes a measurable 95% target."),
                 Paragraph(text=f"{heading} now states an accountable owner."),
             ],
         )

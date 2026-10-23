@@ -9,6 +9,7 @@ _PROVIDER_ENDPOINTS: dict[Provider, tuple[str, str]] = {
     "groq": ("groq_base_url", "groq_api_key"),
     "ollama": ("ollama_base_url", "ollama_api_key"),
     "gemini": ("gemini_base_url", "gemini_api_key"),
+    "openrouter": ("openrouter_base_url", "openrouter_api_key"),
 }
 
 
@@ -26,6 +27,7 @@ def _build_provider(
         max_retries=settings.llm_max_retries,
         supports_json_mode=settings.llm_supports_json_mode,
         reasoning_effort=settings.llm_reasoning_effort,
+        min_interval_s=settings.llm_min_interval_s,
         usage_sink=usage_sink,
     )
 

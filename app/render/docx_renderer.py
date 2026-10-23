@@ -91,7 +91,7 @@ class DocxRenderer:
         properties = document.core_properties
         properties.title = spec.title or "Untitled Document"
         properties.subject = spec.subtitle or ""
-        properties.author = spec.metadata.get("author", self.theme.footer_text or "DocPilot")
+        properties.author = spec.metadata.get("author", self.theme.footer_text or "Productivity")
         properties.keywords = spec.doc_type.value
 
     def _configure_page_furniture(self, document: DocumentObject, spec: DocumentSpec) -> None:

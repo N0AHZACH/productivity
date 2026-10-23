@@ -57,6 +57,7 @@ def _add_workdays(start: date, workdays: int) -> date:
 
 def build_timeline(args: TimelineArgs) -> dict[str, Any]:
     """Build a deterministic phase schedule, skipping weekends."""
+    requested_start: str | None = None
     if args.start_date:
         try:
             current = date.fromisoformat(args.start_date)
@@ -64,6 +65,11 @@ def build_timeline(args: TimelineArgs) -> dict[str, Any]:
             raise ToolError(
                 f"start_date must be an ISO date (YYYY-MM-DD), got {args.start_date!r}"
             ) from exc
+        if current < date.today():
+            # Models without a reliable clock invent past years for relative briefs
+            # ("before Q1"). Scheduling from the next Monday keeps the plan usable.
+            requested_start = args.start_date
+            current = _next_monday(date.today())
     else:
         current = _next_monday(date.today())
     current = _advance_to_workday(current)
@@ -94,7 +100,7 @@ def build_timeline(args: TimelineArgs) -> dict[str, Any]:
         current = _advance_to_workday(phase_end + timedelta(days=1))
 
     overall_end = date.fromisoformat(phases[-1]["end_date"])
-    return {
+    result: dict[str, Any] = {
         "start_date": overall_start.isoformat(),
         "end_date": overall_end.isoformat(),
         "total_weeks": sum(phase.weeks for phase in args.phases),
@@ -102,6 +108,14 @@ def build_timeline(args: TimelineArgs) -> dict[str, Any]:
         "milestones": milestones,
         "calendar_note": "Schedule uses five working days per week and skips weekends.",
     }
+    if requested_start is not None:
+        result["requested_start_date"] = requested_start
+        result["start_date_adjusted"] = True
+        result["adjustment_note"] = (
+            f"Requested start {requested_start} is in the past; the schedule starts on "
+            f"the next Monday ({overall_start.isoformat()})."
+        )
+    return result
 
 
 def register(registry: ToolRegistry) -> None:

@@ -4,6 +4,7 @@ import asyncio
 import json
 import time
 from collections.abc import Callable
+from datetime import date
 from typing import Any
 
 import structlog
@@ -97,6 +98,7 @@ async def write_section(
         {
             "role": "user",
             "content": (
+                f"CURRENT DATE: {date.today().isoformat()}\n\n"
                 f"DOCUMENT ANALYSIS:\n{_analysis_json(state)}\n\n"
                 f"SECTION TITLE: {task.section_title or task.title}\n"
                 f"TASK DESCRIPTION:\n{task.description}\n\n"
@@ -111,7 +113,7 @@ async def write_section(
     draft = await llm.complete_json(
         messages,
         SectionDraft,
-        tier="strong",
+        tier=settings.writing_tier,
         temperature=0.25,
         max_tokens=settings.llm_max_output_tokens,
     )
@@ -159,7 +161,10 @@ async def _run_tool_task(
                 },
             ]
             corrected = await llm.complete_json(
-                messages, CorrectedToolArgs, tier="fast", max_tokens=2048
+                messages,
+                CorrectedToolArgs,
+                tier=settings.correction_tier,
+                max_tokens=2048,
             )
             task.tool_args = corrected.tool_args
     raise ToolError(f"Tool {tool_name!r} failed after correction")
@@ -196,7 +201,12 @@ async def _run_analysis_task(
     for _ in range(2):
         task.attempts += 1
         try:
-            result = await llm.complete_json(messages, AnalysisNote, tier="fast", max_tokens=2048)
+            result = await llm.complete_json(
+                messages,
+                AnalysisNote,
+                tier=settings.analysis_tier,
+                max_tokens=2048,
+            )
             return {"note": result.note}
         except Exception as exc:
             last_error = exc
@@ -228,6 +238,8 @@ async def _run_task(
             f"Skipped {task.id}: {task.title}",
             event="skipped",
             task_id=task.id,
+            title=task.title,
+            kind=task.kind,
             dependencies=blocked,
         )
         return
@@ -235,7 +247,14 @@ async def _run_task(
     task.status = TaskStatus.RUNNING
     task.error = None
     started = time.perf_counter()
-    emit("task", f"Started {task.id}: {task.title}", event="started", task_id=task.id)
+    emit(
+        "task",
+        f"Started {task.id}: {task.title}",
+        event="started",
+        task_id=task.id,
+        title=task.title,
+        kind=task.kind,
+    )
     try:
         if task.kind == "tool":
             task.result = await _run_tool_task(task, state, registry, llm, settings)
@@ -273,6 +292,8 @@ async def _run_task(
             f"Finished {task.id}: {task.title}",
             event="finished",
             task_id=task.id,
+            title=task.title,
+            kind=task.kind,
             status=task.status.value,
             duration_ms=duration_ms,
         )
@@ -286,6 +307,8 @@ async def _run_task(
             f"Failed {task.id}: {task.title}",
             event="failed",
             task_id=task.id,
+            title=task.title,
+            kind=task.kind,
             status=task.status.value,
             duration_ms=duration_ms,
             error=str(exc),
@@ -300,15 +323,42 @@ async def execute(
     settings: Settings,
     emit: Emit,
 ) -> None:
-    """Run every task layer by layer, bounded by max_concurrency."""
+    """Run the task DAG as soon as each task's dependencies are terminal."""
     if state.plan is None:
         raise PlanInvalid("Cannot execute without a plan")
     semaphore = asyncio.Semaphore(settings.max_concurrency)
     state.status = RunStatus.RUNNING
+    pending = {task.id: task for task in state.plan.tasks}
+    terminal: set[str] = set()
+    running: dict[asyncio.Task[None], Task] = {}
 
     async def guarded(task: Task) -> None:
         async with semaphore:
             await _run_task(task, state, registry, llm, settings, emit)
 
-    for layer in state.plan.topological_layers():
-        await asyncio.gather(*(guarded(task) for task in layer))
+    try:
+        while pending or running:
+            ready = [
+                task
+                for task in pending.values()
+                if all(dependency in terminal for dependency in task.depends_on)
+            ]
+            for task in ready:
+                pending.pop(task.id)
+                running[asyncio.create_task(guarded(task))] = task
+
+            if not running:
+                raise PlanInvalid("Task dependencies could not be scheduled")
+
+            done, _ = await asyncio.wait(
+                running, return_when=asyncio.FIRST_COMPLETED
+            )
+            for future in done:
+                task = running.pop(future)
+                terminal.add(task.id)
+                future.result()
+    finally:
+        for future in running:
+            future.cancel()
+        if running:
+            await asyncio.gather(*running, return_exceptions=True)

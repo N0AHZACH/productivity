@@ -24,7 +24,7 @@ class Pong(BaseModel):
     pong: str
 
 
-def _completion(content: str) -> SimpleNamespace:
+def _completion(content: Any) -> SimpleNamespace:
     return SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
         model="fake-model",
@@ -54,6 +54,7 @@ def _client(
     *,
     max_concurrency: int = 4,
     retry_delay: float = 0.0,
+    min_interval: float = 0.0,
     reasoning_effort: str | None = None,
     usage_sink: Any = None,
 ) -> tuple[OpenAICompatClient, FakeCompletions]:
@@ -68,6 +69,7 @@ def _client(
         max_retries=3,
         reasoning_effort=reasoning_effort,
         retry_base_delay_s=retry_delay,
+        min_interval_s=min_interval,
         usage_sink=usage_sink,
         client=fake,
     )
@@ -80,10 +82,35 @@ def _rate_limit() -> openai.RateLimitError:
     return openai.RateLimitError("rate limited", response=response, body=None)
 
 
+def _rate_limit_body_hint(delay: str) -> openai.RateLimitError:
+    request = httpx2.Request("POST", "http://fake/chat")
+    response = httpx2.Response(429, request=request)
+    return openai.RateLimitError(
+        f"quota exceeded, 'retryDelay': '{delay}'", response=response, body=None
+    )
+
+
 @pytest.mark.asyncio
 async def test_fenced_json_is_parsed() -> None:
     client, _ = _client(
         lambda **_: asyncio.sleep(0, _completion('```json\n{"pong": "hello"}\n```'))
+    )
+    result = await client.complete_json([{"role": "user", "content": "ping"}], Pong)
+    assert result.pong == "hello"
+
+
+@pytest.mark.asyncio
+async def test_list_content_parts_are_flattened() -> None:
+    client, _ = _client(
+        lambda **_: asyncio.sleep(
+            0,
+            _completion(
+                [
+                    {"type": "text", "text": '{"pong": '},
+                    {"type": "text", "text": '"hello"}'},
+                ]
+            ),
+        )
     )
     result = await client.complete_json([{"role": "user", "content": "ping"}], Pong)
     assert result.pong == "hello"
@@ -125,6 +152,53 @@ async def test_429_is_retried_then_succeeds() -> None:
     result = await client.complete_json([{"role": "user", "content": "ping"}], Pong)
     assert result.pong == "ok"
     assert attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_retry_delay_in_error_body_is_honored() -> None:
+    attempts = 0
+
+    async def handler(**_: Any) -> Any:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise _rate_limit_body_hint("0.08s")
+        return _completion('{"pong": "ok"}')
+
+    client, _ = _client(handler)
+    started = time.monotonic()
+    result = await client.complete_json([{"role": "user", "content": "ping"}], Pong)
+    elapsed = time.monotonic() - started
+
+    assert result.pong == "ok"
+    assert attempts == 2
+    assert 0.05 <= elapsed < 5.0
+
+
+@pytest.mark.asyncio
+async def test_daily_quota_hint_fails_fast_without_retries() -> None:
+    async def handler(**_: Any) -> Any:
+        raise _rate_limit_body_hint("3600s")
+
+    client, completions = _client(handler)
+    with pytest.raises(LLMProviderError):
+        await client.complete([{"role": "user", "content": "ping"}])
+    assert completions.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_min_interval_paces_provider_calls() -> None:
+    client, completions = _client(
+        lambda **_: asyncio.sleep(0, _completion("ok")), min_interval=0.05
+    )
+
+    started = time.monotonic()
+    await client.complete([{"role": "user", "content": "one"}])
+    await client.complete([{"role": "user", "content": "two"}])
+    elapsed = time.monotonic() - started
+
+    assert completions.calls == 2
+    assert elapsed >= 0.04
 
 
 @pytest.mark.asyncio
@@ -239,6 +313,11 @@ def test_factory_builds_primary_and_optional_fallback() -> None:
     )
     primary = build_llm(settings)
     assert isinstance(primary, OpenAICompatClient)
+
+    openrouter = build_llm(
+        Settings(primary_provider="openrouter", openrouter_api_key="test")
+    )
+    assert isinstance(openrouter, OpenAICompatClient)
 
     with_fallback = build_llm(
         settings.model_copy(update={"fallback_provider": "groq", "groq_api_key": "test"})

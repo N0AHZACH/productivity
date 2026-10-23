@@ -349,3 +349,109 @@ async def test_run_timeout_returns_typed_error(tmp_path: Path) -> None:
 
     assert response.status_code == 504
     assert response.json()["error"]["code"] == "RUN_TIMEOUT"
+
+
+def _sse_events(body: str) -> list[dict[str, Any]]:
+    return [
+        json.loads(line.removeprefix("data: "))
+        for line in body.splitlines()
+        if line.startswith("data: ")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_background_run_streams_sse_and_replays_history(tmp_path: Path) -> None:
+    analysis = _standard_analysis()
+    composition = CompositionDraft(
+        title="Customer Support Chatbot Project Plan",
+        subtitle="Twelve-week assisted launch",
+        executive_summary="The plan launches a focused assisted support pilot.",
+        recommendation="Start with a narrow pilot and expand after measured success.",
+    )
+    llm = _fake_llm(analysis, composition)
+    app = _app(tmp_path, llm)
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        started = await client.post(
+            "/runs",
+            json={"request": "Write a project plan for a support chatbot pilot."},
+        )
+        assert started.status_code == 202, started.text
+        handle = started.json()
+        assert handle["status"] == "queued"
+        assert handle["events_url"] == f"/runs/{handle['run_id']}/events"
+
+        stream = await client.get(handle["events_url"])
+        assert stream.status_code == 200
+        assert stream.headers["content-type"].startswith("text/event-stream")
+        events = _sse_events(stream.text)
+        analysis_event = next(event for event in events if event["stage"] == "analysis")
+        assert analysis_event["data"]["objective"] == analysis.objective
+        assert analysis_event["data"]["audience"] == analysis.audience
+        assert analysis_event["data"]["assumption_items"] == analysis.assumptions
+        assert analysis_event["data"]["missing_items"] == analysis.missing_info
+        assert analysis_event["data"]["conflict_items"] == analysis.conflicts
+        plan_event = next(event for event in events if event["stage"] == "plan")
+        assert plan_event["data"]["task_items"]
+        assert all(
+            {"id", "title", "kind", "status"} <= set(item)
+            for item in plan_event["data"]["task_items"]
+        )
+        task_events = [event for event in events if event["stage"] == "task"]
+        assert task_events
+        assert all("title" in event["data"] and "kind" in event["data"] for event in task_events)
+        completed = next(
+            event for event in events if event.get("message") == "Run completed"
+        )
+        assert completed["data"]["status"] == "completed"
+        assert completed["data"]["document_url"] == f"/documents/{handle['run_id']}"
+        assert completed["data"]["filename"] == f"{handle['run_id']}.docx"
+        assert completed["data"]["plan_source"] == "llm"
+        assert completed["data"]["reflection_passed"] is True
+        assert completed["data"]["warning_items"] == []
+
+        replay = await client.get(handle["events_url"])
+        replay_events = _sse_events(replay.text)
+        assert replay_events[0]["message"] == "Run started"
+        assert len(replay_events) == len(events)
+
+        download = await client.get(completed["data"]["document_url"])
+        assert download.status_code == 200
+        assert download.content.startswith(b"PK")
+
+        missing = await client.get("/runs/" + "a" * 32 + "/events")
+        assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_analysis_and_plan_cache_are_reused(tmp_path: Path) -> None:
+    analysis = _standard_analysis()
+    composition = CompositionDraft(
+        title="Customer Support Chatbot Project Plan",
+        subtitle="Twelve-week assisted launch",
+        executive_summary="The plan launches a focused assisted support pilot.",
+        recommendation="Start with a narrow pilot and expand after measured success.",
+    )
+    llm = _fake_llm(analysis, composition)
+    app = _app(tmp_path, llm)
+    transport = httpx.ASGITransport(app=app)
+    payload = {"request": "Write a project plan for a support chatbot pilot."}
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/agent", json=payload)
+        second = await client.post("/agent", json=payload)
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert sum(call.schema is Analysis for call in llm.calls) == 1
+    assert sum(call.schema is TaskList for call in llm.calls) == 1
+    trace = second.json()["trace"]
+    assert any(
+        event["stage"] == "analysis" and event["data"].get("cached") is True
+        for event in trace
+    )
+    assert any(
+        event["stage"] == "plan" and event["data"].get("cached") is True
+        for event in trace
+    )

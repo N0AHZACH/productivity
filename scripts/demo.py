@@ -1,4 +1,4 @@
-"""Run DocPilot from the command line using the configured real LLM provider."""
+"""Run Productivity from the command line using the configured real LLM provider."""
 
 import argparse
 import asyncio

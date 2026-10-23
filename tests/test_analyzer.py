@@ -46,7 +46,7 @@ def _complex_analysis() -> Analysis:
 @pytest.mark.asyncio
 async def test_standard_request_analyzes_cleanly() -> None:
     llm = FakeLLM.with_schemas({Analysis: _standard_analysis()})
-    analysis = await analyze("Write a chatbot project plan.", [], llm)
+    analysis = await analyze("Write a chatbot project plan.", [], llm, Settings())
     assert analysis.doc_type is DocType.PROJECT_PLAN
     assert analysis.conflicts == []
     assert analysis.complexity == "standard"
@@ -54,9 +54,23 @@ async def test_standard_request_analyzes_cleanly() -> None:
 
 
 @pytest.mark.asyncio
+async def test_analysis_tier_is_configurable() -> None:
+    llm = FakeLLM.with_schemas({Analysis: _standard_analysis()})
+    await analyze(
+        "Write a chatbot project plan.",
+        [],
+        llm,
+        Settings(analysis_tier="strong"),
+    )
+    assert llm.calls[0].tier == "strong"
+
+
+@pytest.mark.asyncio
 async def test_complex_request_keeps_conflicts_and_assumptions() -> None:
     llm = FakeLLM.with_schemas({Analysis: _complex_analysis()})
-    analysis = await analyze("Something for the board about billing.", [], llm)
+    analysis = await analyze(
+        "Something for the board about billing.", [], llm, Settings()
+    )
     assert analysis.conflicts
     assert len(analysis.assumptions) >= 2
     assert analysis.complexity == "complex"
@@ -73,7 +87,7 @@ async def test_out_of_scope_request_is_rejected() -> None:
     )
     llm = FakeLLM.with_schemas({Analysis: out_of_scope})
     with pytest.raises(GuardrailRejected, match="creative-writing"):
-        await analyze("Write a poem about clouds.", [], llm)
+        await analyze("Write a poem about clouds.", [], llm, Settings())
 
 
 @pytest.mark.asyncio
@@ -85,7 +99,7 @@ async def test_injection_is_flagged_and_still_analyzed() -> None:
     )
     assert "prompt_injection" in result.flags
     llm = FakeLLM.with_schemas({Analysis: _standard_analysis()})
-    analysis = await analyze(result.sanitized, result.flags, llm)
+    analysis = await analyze(result.sanitized, result.flags, llm, settings)
     assert analysis.in_scope is True
     assert "prompt_injection" in llm.calls[0].messages[1]["content"]
 
@@ -100,7 +114,7 @@ async def test_missing_assumption_is_backfilled() -> None:
         assumptions=[],
     )
     llm = FakeLLM.with_schemas({Analysis: analysis})
-    result = await analyze("Write a proposal with no budget.", [], llm)
+    result = await analyze("Write a proposal with no budget.", [], llm, Settings())
     assert result.assumptions
     assert "Budget ceiling" in result.assumptions[0]
     assert "120,000 USD" in result.assumptions[0]
@@ -116,7 +130,7 @@ async def test_existing_budget_assumption_prevents_conflicting_backfill() -> Non
         assumptions=["Budget not given; assuming 500,000 USD."],
     )
     llm = FakeLLM.with_schemas({Analysis: analysis})
-    result = await analyze("Write a decision memo.", [], llm)
+    result = await analyze("Write a decision memo.", [], llm, Settings())
     assert result.assumptions == ["Budget not given; assuming 500,000 USD."]
 
 

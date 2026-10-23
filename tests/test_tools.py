@@ -146,6 +146,36 @@ async def test_schedule_bad_date() -> None:
 def test_schedule_defaults_to_next_monday() -> None:
     result = build_timeline(TimelineArgs(phases=[{"name": "One", "weeks": 1}]))
     assert date.fromisoformat(result["start_date"]).weekday() == 0
+    assert "start_date_adjusted" not in result
+
+
+def test_schedule_rejects_a_past_start_date() -> None:
+    result = build_timeline(
+        TimelineArgs(
+            start_date="2024-11-04",
+            phases=[{"name": "One", "weeks": 2}, {"name": "Two", "weeks": 1}],
+        )
+    )
+
+    start = date.fromisoformat(result["start_date"])
+    assert start >= date.today()
+    assert start.weekday() == 0
+    assert result["requested_start_date"] == "2024-11-04"
+    assert result["start_date_adjusted"] is True
+    assert "2024-11-04" in result["adjustment_note"]
+    assert result["total_weeks"] == 3
+
+
+def test_schedule_keeps_an_explicit_future_start_date() -> None:
+    result = build_timeline(
+        TimelineArgs(
+            start_date="2030-01-07",
+            phases=[{"name": "One", "weeks": 1}],
+        )
+    )
+
+    assert result["start_date"] == "2030-01-07"
+    assert "start_date_adjusted" not in result
 
 
 def test_risk_register_is_deterministic_and_relevant() -> None:

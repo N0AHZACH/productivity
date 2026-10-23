@@ -7,7 +7,8 @@ from typing import Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-Provider = Literal["groq", "ollama", "gemini"]
+Provider = Literal["groq", "ollama", "gemini", "openrouter"]
+ModelTier = Literal["fast", "strong"]
 
 
 class Settings(BaseSettings):
@@ -32,13 +33,22 @@ class Settings(BaseSettings):
     ollama_api_key: str = "ollama"
     gemini_api_key: str = ""
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
     model_fast: str = "openai/gpt-oss-20b"
     model_strong: str = "openai/gpt-oss-120b"
+    analysis_tier: ModelTier = "fast"
+    planning_tier: ModelTier = "fast"
+    writing_tier: ModelTier = "strong"
+    reflection_tier: ModelTier = "strong"
+    composition_tier: ModelTier = "fast"
+    correction_tier: ModelTier = "fast"
     llm_supports_json_mode: bool = True
     llm_timeout_s: float = Field(default=60.0, gt=0)
     llm_max_retries: int = Field(default=3, ge=1, le=10)
     llm_max_output_tokens: int = Field(default=4096, ge=512, le=32000)
-    llm_reasoning_effort: Literal["low", "medium", "high"] | None = None
+    llm_reasoning_effort: Literal["minimal", "low", "medium", "high", "none"] | None = None
+    llm_min_interval_s: float = Field(default=0.0, ge=0, le=60)
 
     max_request_chars: int = Field(default=4000, gt=0)
     max_concurrency: int = Field(default=4, ge=1, le=32)
@@ -48,9 +58,11 @@ class Settings(BaseSettings):
     run_timeout_s: float = Field(default=120.0, gt=0)
 
     data_dir: Path = Path("./data")
-    default_author: str = "DocPilot"
+    default_author: str = "Productivity"
     api_keys: str = ""
     cache_enabled: bool = True
+    cache_ttl_s: float = Field(default=3600.0, gt=0)
+    cache_max_entries: int = Field(default=256, ge=1, le=10000)
 
     @field_validator("fallback_provider", "llm_reasoning_effort", mode="before")
     @classmethod
@@ -76,6 +88,8 @@ class Settings(BaseSettings):
             return not self.groq_api_key.strip()
         if self.primary_provider == "gemini":
             return not self.gemini_api_key.strip()
+        if self.primary_provider == "openrouter":
+            return not self.openrouter_api_key.strip()
         return False
 
 

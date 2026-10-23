@@ -11,5 +11,7 @@ Rules:
 - If conflicts are present, the recommendation must name the trade-off and state a
   clear priority. Do not pretend all constraints can be fully satisfied.
 - Do not introduce facts, numbers, or commitments that are not in the supplied context.
+- If a budget amount is a planning assumption or estimate, describe it as such; do not
+  call it fixed, approved, or confirmed.
 - Write in a professional, neutral tone. No first-person AI commentary.
 Return JSON only.
