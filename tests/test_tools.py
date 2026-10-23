@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, ValidationError
 from app.core.errors import ToolError
 from app.models.common import DocType
 from app.tools.budget import BudgetArgs
-from app.tools.compare_options import CompareArgs, compare_options
+from app.tools.compare_options import CompareArgs, Criterion, compare_options
 from app.tools.mockdata import (
     CompanyProfileArgs,
     TeamRosterArgs,
@@ -17,7 +17,7 @@ from app.tools.mockdata import (
 )
 from app.tools.registry import ToolRegistry, default_registry
 from app.tools.risk import RiskArgs, generate_risk_register
-from app.tools.schedule import TimelineArgs, build_timeline
+from app.tools.schedule import Phase, TimelineArgs, build_timeline
 from app.tools.templates import TEMPLATE_SECTIONS, TemplateArgs, get_section_template
 
 
@@ -144,7 +144,7 @@ async def test_schedule_bad_date() -> None:
 
 
 def test_schedule_defaults_to_next_monday() -> None:
-    result = build_timeline(TimelineArgs(phases=[{"name": "One", "weeks": 1}]))
+    result = build_timeline(TimelineArgs(phases=[Phase(name="One", weeks=1)]))
     assert date.fromisoformat(result["start_date"]).weekday() == 0
     assert "start_date_adjusted" not in result
 
@@ -153,7 +153,7 @@ def test_schedule_rejects_a_past_start_date() -> None:
     result = build_timeline(
         TimelineArgs(
             start_date="2024-11-04",
-            phases=[{"name": "One", "weeks": 2}, {"name": "Two", "weeks": 1}],
+            phases=[Phase(name="One", weeks=2), Phase(name="Two", weeks=1)],
         )
     )
 
@@ -170,7 +170,7 @@ def test_schedule_keeps_an_explicit_future_start_date() -> None:
     result = build_timeline(
         TimelineArgs(
             start_date="2030-01-07",
-            phases=[{"name": "One", "weeks": 1}],
+            phases=[Phase(name="One", weeks=1)],
         )
     )
 
@@ -201,7 +201,7 @@ def test_compare_options_ranks_complete_options() -> None:
     result = compare_options(
         CompareArgs(
             options=["Build", "Buy"],
-            criteria=[{"name": "Cost", "weight": 2}, {"name": "Speed", "weight": 1}],
+            criteria=[Criterion(name="Cost", weight=2), Criterion(name="Speed", weight=1)],
             scores={
                 "Build": {"Cost": 4, "Speed": 2},
                 "Buy": {"Cost": 2, "Speed": 5},
@@ -217,7 +217,7 @@ def test_compare_options_reports_missing_scores() -> None:
     result = compare_options(
         CompareArgs(
             options=["A", "B"],
-            criteria=[{"name": "Cost", "weight": 1}],
+            criteria=[Criterion(name="Cost", weight=1)],
             scores={"A": {"Cost": 4}},
         )
     )
@@ -255,7 +255,7 @@ def test_compare_options_rejects_nonpositive_weight() -> None:
     with pytest.raises(ValidationError, match="greater than 0"):
         CompareArgs(
             options=["A", "B"],
-            criteria=[{"name": "Cost", "weight": 0}],
+            criteria=[Criterion(name="Cost", weight=0)],
             scores={},
         )
 

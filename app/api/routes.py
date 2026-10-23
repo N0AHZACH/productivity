@@ -134,11 +134,12 @@ async def download_document(run_id: str, request: Request) -> Response:
         content = await filestore.read(run_id)
     except (ValueError, FileNotFoundError) as exc:
         raise NotFound("Document not found.") from exc
+    filename = await filestore.filename_for(run_id)
     return Response(
         content=content,
         media_type=DOCX_MEDIA_TYPE,
         headers={
-            "Content-Disposition": f'attachment; filename="{run_id}.docx"',
+            "Content-Disposition": f'attachment; filename="{filename}"',
             "X-Content-Type-Options": "nosniff",
         },
     )

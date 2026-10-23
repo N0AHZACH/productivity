@@ -1,6 +1,7 @@
 """End-to-end agent orchestration with timeouts and trace events."""
 
 import asyncio
+import re
 import time
 import uuid
 from collections.abc import Callable
@@ -21,13 +22,27 @@ from app.agent.reflector import reflect
 from app.container import Container
 from app.core.errors import AgentFailed, DocPilotError, RunTimeout
 from app.core.logging import bind_run
-from app.infra.cache import CachedPlan, plan_cache_key, request_cache_key
+from app.infra.cache import (
+    CachedPlan,
+    HotRunSnapshot,
+    hot_run_cache_key,
+    plan_cache_key,
+    request_cache_key,
+)
 from app.infra.events import EventBus
+from app.llm.metadata import llm_label
 from app.models.common import RunStatus, TaskStatus
 from app.models.plan import TaskList
 from app.models.state import AgentState, Analysis, Principal, TraceEvent
 
 logger = structlog.get_logger(__name__)
+
+
+def _document_filename(title: str, run_id: str) -> str:
+    """Create a readable, collision-resistant download filename."""
+    slug = re.sub(r"[^a-z0-9]+", "-", title.casefold()).strip("-")
+    slug = slug[:72].strip("-") or "business-document"
+    return f"{slug}-{run_id[:8]}.docx"
 
 
 def _task_items(plan: TaskList) -> list[dict[str, Any]]:
@@ -75,6 +90,110 @@ class Orchestrator:
     def __init__(self, container: Container) -> None:
         self.container = container
 
+    async def _serve_hot_snapshot(
+        self,
+        state: AgentState,
+        snapshot: HotRunSnapshot,
+        emit: Callable[..., None],
+        settings: Any,
+    ) -> AgentState:
+        """Replay a completed demo run without making provider calls."""
+        cached = snapshot.state
+        state.analysis = cached.analysis.model_copy(deep=True) if cached.analysis else None
+        state.plan = cached.plan.model_copy(deep=True) if cached.plan else None
+        state.spec = cached.spec.model_copy(deep=True) if cached.spec else None
+        state.plan_source = cached.plan_source
+        state.plan_source_detail = cached.plan_source_detail
+        state.reflection = [report.model_copy(deep=True) for report in cached.reflection]
+        state.warnings = list(cached.warnings)
+
+        if state.analysis is not None:
+            analysis = state.analysis
+            emit(
+                "analysis",
+                "Request analyzed from hot cache",
+                doc_type=analysis.doc_type.value,
+                complexity=analysis.complexity,
+                objective=analysis.objective,
+                audience=analysis.audience,
+                conflicts=len(analysis.conflicts),
+                missing_info=len(analysis.missing_info),
+                conflict_items=analysis.conflicts,
+                assumption_items=analysis.assumptions,
+                missing_items=analysis.missing_info,
+                cached=True,
+                hot_cache=True,
+                duration_ms=0,
+            )
+        if state.plan is not None:
+            emit(
+                "plan",
+                "Task plan replayed from hot cache",
+                source=state.plan_source,
+                source_detail=state.plan_source_detail,
+                tasks=len(state.plan.tasks),
+                task_items=_task_items(state.plan),
+                cached=True,
+                hot_cache=True,
+                duration_ms=0,
+            )
+        emit("execute", "Task results replayed from hot cache", cached=True, duration_ms=0)
+        if state.spec is not None:
+            emit(
+                "compose",
+                "Document draft replayed from hot cache",
+                sections=len(state.spec.sections),
+                cached=True,
+                duration_ms=0,
+            )
+        emit(
+            "reflection",
+            "Self-check replayed from hot cache",
+            loops=len(state.reflection),
+            cached=True,
+            duration_ms=0,
+        )
+        if state.spec is None:
+            raise AgentFailed("Hot cache snapshot did not contain a document specification")
+
+        state.document_filename = _document_filename(state.spec.title, state.run_id)
+        path = await self.container.filestore.save_named(
+            state.run_id, snapshot.document, state.document_filename
+        )
+        state.document_path = str(path)
+        emit(
+            "render",
+            "Word document replayed from hot cache",
+            bytes=len(snapshot.document),
+            duration_ms=0,
+        )
+        emit(
+            "store",
+            "Document stored",
+            filename=state.document_filename,
+            bytes=len(snapshot.document),
+            duration_ms=0,
+        )
+        state.status = (
+            RunStatus.COMPLETED_WITH_WARNINGS if state.warnings else RunStatus.COMPLETED
+        )
+        emit(
+            "run",
+            "Run completed",
+            status=state.status.value,
+            warnings=len(state.warnings),
+            warning_items=state.warnings,
+            plan_source=state.plan_source,
+            plan_source_detail=state.plan_source_detail,
+            reflection_passed=all(report.passed for report in state.reflection)
+            if state.reflection
+            else None,
+            document_url=f"/documents/{state.run_id}",
+            filename=state.document_filename,
+            hot_cache=True,
+        )
+        return state
+
     async def run(
         self,
         request: str,
@@ -112,6 +231,15 @@ class Orchestrator:
                     flags=guardrail.flags,
                     duration_ms=int((time.perf_counter() - stage_started) * 1000),
                 )
+
+                hot_cache = self.container.hot_cache if settings.hot_cache_enabled else None
+                hot_snapshot = (
+                    hot_cache.get(hot_run_cache_key(state.request))
+                    if hot_cache is not None
+                    else None
+                )
+                if isinstance(hot_snapshot, HotRunSnapshot):
+                    return await self._serve_hot_snapshot(state, hot_snapshot, emit, settings)
 
                 stage_started = time.perf_counter()
                 analysis_key = request_cache_key(state.request, guardrail.flags)
@@ -166,6 +294,11 @@ class Orchestrator:
                         cache.set(plan_key, CachedPlan(plan_model, plan_source))
                 state.plan = plan_model
                 state.plan_source = plan_source
+                state.plan_source_detail = (
+                    llm_label(self.container.llm, settings.planning_tier)
+                    if plan_source == "llm"
+                    else "deterministic fallback plan (LLM validation failed)"
+                )
                 if plan_source == "fallback":
                     state.warnings.append(
                         "Planning used the deterministic fallback after invalid LLM output."
@@ -174,6 +307,7 @@ class Orchestrator:
                     "plan",
                     "Task plan ready",
                     source=plan_source,
+                    source_detail=state.plan_source_detail,
                     tasks=len(plan_model.tasks),
                     task_items=_task_items(plan_model),
                     cached=plan_cached,
@@ -268,15 +402,23 @@ class Orchestrator:
                 )
 
                 stage_started = time.perf_counter()
-                path = await self.container.filestore.save(state.run_id, content)
+                state.document_filename = _document_filename(spec.title, state.run_id)
+                path = await self.container.filestore.save_named(
+                    state.run_id, content, state.document_filename
+                )
                 state.document_path = str(path)
                 emit(
                     "store",
                     "Document stored",
-                    filename=path.name,
+                    filename=state.document_filename,
                     bytes=len(content),
                     duration_ms=int((time.perf_counter() - stage_started) * 1000),
                 )
+                if hot_cache is not None:
+                    hot_cache.set(
+                        hot_run_cache_key(state.request),
+                        HotRunSnapshot(state.model_copy(deep=True), content),
+                    )
 
             state.status = (
                 RunStatus.COMPLETED_WITH_WARNINGS
@@ -290,13 +432,14 @@ class Orchestrator:
                 warnings=len(state.warnings),
                 warning_items=state.warnings,
                 plan_source=state.plan_source,
+                plan_source_detail=state.plan_source_detail,
                 reflection_passed=(
                     all(report.passed for report in state.reflection)
                     if state.reflection
                     else None
                 ),
                 document_url=f"/documents/{state.run_id}",
-                filename=f"{state.run_id}.docx",
+                filename=state.document_filename or f"{state.run_id}.docx",
             )
             return state
         except TimeoutError as exc:

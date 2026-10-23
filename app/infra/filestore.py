@@ -1,6 +1,7 @@
 """Local document storage with safe run identifiers and atomic writes."""
 
 import asyncio
+import json
 import os
 import re
 import tempfile
@@ -31,10 +32,29 @@ class FileStore:
         await asyncio.to_thread(self._write, target, content)
         return target
 
+    async def save_named(self, run_id: str, content: bytes, filename: str) -> Path:
+        """Persist a document and its human-readable download filename."""
+        target = await self.save(run_id, content)
+        await asyncio.to_thread(self._write_filename, run_id, filename)
+        return target
+
     async def read(self, run_id: str) -> bytes:
         """Read one rendered document."""
         target = self.path_for(run_id)
         return await asyncio.to_thread(target.read_bytes)
+
+    async def filename_for(self, run_id: str) -> str:
+        """Return the display filename recorded for a run, or a safe fallback."""
+        await asyncio.to_thread(self.ensure)
+        metadata = self.root / f"{run_id}.json"
+        try:
+            payload = await asyncio.to_thread(metadata.read_text, encoding="utf-8")
+            value = json.loads(payload).get("filename")
+            if isinstance(value, str) and value.endswith(".docx") and "/" not in value:
+                return value
+        except (OSError, ValueError, TypeError):
+            pass
+        return f"{run_id}.docx"
 
     def _write(self, target: Path, content: bytes) -> None:
         self.ensure()
@@ -50,6 +70,12 @@ class FileStore:
             os.replace(temporary_path, target)
         finally:
             temporary_path.unlink(missing_ok=True)
+
+    def _write_filename(self, run_id: str, filename: str) -> None:
+        if not filename.endswith(".docx") or "/" in filename or "\\" in filename:
+            raise ValueError("Invalid document filename")
+        metadata = self.root / f"{run_id}.json"
+        metadata.write_text(json.dumps({"filename": filename}), encoding="utf-8")
 
 
 LocalFileStore = FileStore

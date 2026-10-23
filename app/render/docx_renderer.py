@@ -24,8 +24,10 @@ from app.models.document import (
     Table,
 )
 from app.render.styles import (
+    add_bookmark,
     add_page_count_field,
     add_page_number_field,
+    add_page_ref_field,
     add_toc_field,
     configure_document_styles,
     configure_page,
@@ -70,7 +72,7 @@ class DocxRenderer:
         self._set_core_properties(document, spec)
 
         self._render_cover(document, spec)
-        self._render_toc(document)
+        self._render_toc(document, spec)
         self._render_assumptions(document, spec)
         for section in spec.sections:
             self._render_section(document, section)
@@ -152,6 +154,10 @@ class DocxRenderer:
             ("Version", metadata.get("version", "1.0")),
             ("Document type", spec.doc_type.value.replace("_", " ").title()),
         ]
+        if metadata.get("planner"):
+            rows.append(("AI planner", metadata["planner"]))
+        if metadata.get("writer"):
+            rows.append(("AI writer", metadata["writer"]))
         table = document.add_table(rows=0, cols=2)
         table.autofit = False
         for label, value in rows:
@@ -184,7 +190,7 @@ class DocxRenderer:
         set_paragraph_bottom_border(rule, self.theme.accent_hex, size=16)
         document.add_page_break()
 
-    def _render_toc(self, document: DocumentObject) -> None:
+    def _render_toc(self, document: DocumentObject, spec: DocumentSpec) -> None:
         heading = document.add_paragraph()
         format_run(
             heading,
@@ -194,15 +200,70 @@ class DocxRenderer:
             size_pt=self.theme.h1_pt,
             font=self.theme.font_heading,
         )
-        heading.paragraph_format.space_after = Pt(16)
+        heading.paragraph_format.space_after = Pt(8)
         toc_paragraph = document.add_paragraph()
+        toc_paragraph.paragraph_format.space_after = Pt(2)
+        toc_paragraph.paragraph_format.line_spacing = 0.1
         add_toc_field(toc_paragraph)
+        for run in toc_paragraph.runs:
+            run.font.size = Pt(1)
+            run.font.color.rgb = hex_to_rgb("FFFFFF")
+
+        contents = document.add_table(rows=1, cols=2)
+        contents.autofit = False
+        contents.style = "Table Grid"
+        header = contents.rows[0].cells
+        header[0].width = Cm(13.5)
+        header[1].width = Cm(3.1)
+        for cell, text in zip(header, ("Section", "Page"), strict=True):
+            set_cell_background(cell, self.theme.accent_hex)
+            set_cell_margins(cell, top_cm=0.12, bottom_cm=0.12, left_cm=0.2, right_cm=0.2)
+            paragraph = cell.paragraphs[0]
+            paragraph.paragraph_format.space_after = Pt(0)
+            format_run(
+                paragraph,
+                text,
+                bold=True,
+                color="FFFFFF",
+                size_pt=9,
+                font=self.theme.font_body,
+            )
+        repeat_table_header(contents.rows[0])
+
+        outline: list[tuple[str, str]] = []
+        if spec.assumptions:
+            outline.append(("Assumptions and Open Questions", "bookmark_assumptions"))
+        outline.extend(
+            (section.heading, f"bookmark_{section.id}")
+            for section in spec.sections
+            if section.heading.strip()
+        )
+        for title, bookmark in outline:
+            cells = contents.add_row().cells
+            for cell in cells:
+                set_cell_margins(cell, top_cm=0.10, bottom_cm=0.10, left_cm=0.2, right_cm=0.2)
+            cells[0].width = Cm(13.5)
+            cells[1].width = Cm(3.1)
+            label = cells[0].paragraphs[0]
+            label.paragraph_format.space_after = Pt(0)
+            format_run(label, title, size_pt=9.5, font=self.theme.font_body)
+            page = cells[1].paragraphs[0]
+            page.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            page.paragraph_format.space_after = Pt(0)
+            add_page_ref_field(page, bookmark)
+            for run in page.runs:
+                run.font.size = Pt(9.5)
+                run.font.name = self.theme.font_body
+        spacer = document.add_paragraph()
+        spacer.paragraph_format.space_after = Pt(0)
+        spacer.paragraph_format.line_spacing = 0.5
         document.add_page_break()
 
     def _render_assumptions(self, document: DocumentObject, spec: DocumentSpec) -> None:
         if not spec.assumptions:
             return
-        document.add_paragraph("Assumptions and Open Questions", style="Heading 1")
+        heading = document.add_paragraph("Assumptions and Open Questions", style="Heading 1")
+        add_bookmark(heading, "bookmark_assumptions", 1)
         table = document.add_table(rows=1, cols=1)
         table.autofit = False
         cell = table.cell(0, 0)
@@ -233,7 +294,9 @@ class DocxRenderer:
 
     def _render_section(self, document: DocumentObject, section: Section) -> None:
         if section.heading:
-            document.add_paragraph(section.heading, style="Heading 1")
+            heading = document.add_paragraph(section.heading, style="Heading 1")
+            bookmark_id = len(document.paragraphs) + 1
+            add_bookmark(heading, f"bookmark_{section.id}", bookmark_id)
         for index, block in enumerate(section.blocks):
             try:
                 self._render_block(document, block)
@@ -302,6 +365,7 @@ class DocxRenderer:
         for index, column in enumerate(block.columns):
             cell = header_cells[index]
             cell.width = Cm(widths[index])
+            set_cell_margins(cell, top_cm=0.12, bottom_cm=0.12, left_cm=0.18, right_cm=0.18)
             set_cell_background(cell, self.theme.accent_hex)
             cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
             paragraph = cell.paragraphs[0]
@@ -321,6 +385,7 @@ class DocxRenderer:
             for column_index, value in enumerate(row):
                 cell = cells[column_index]
                 cell.width = Cm(widths[column_index])
+                set_cell_margins(cell, top_cm=0.10, bottom_cm=0.10, left_cm=0.18, right_cm=0.18)
                 if row_index % 2 == 1:
                     set_cell_background(cell, self.theme.accent_light_hex)
                 paragraph = cell.paragraphs[0]
@@ -331,6 +396,10 @@ class DocxRenderer:
                     size_pt=self.theme.body_pt - 1.5,
                     font=self.theme.font_body,
                 )
+
+        spacer = document.add_paragraph()
+        spacer.paragraph_format.space_after = Pt(3)
+        spacer.paragraph_format.line_spacing = 0.5
 
     @staticmethod
     def _column_widths(block: Table, width_cm: float) -> list[float]:

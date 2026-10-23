@@ -1,4 +1,4 @@
-.PHONY: run test lint fmt typecheck docker-build demo
+.PHONY: run test lint fmt typecheck docker-build demo portfolio-pdf
 
 run:
 	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -20,3 +20,6 @@ docker-build:
 
 demo:
 	python scripts/demo.py
+
+portfolio-pdf:
+	python scripts/build_portfolio_pdf.py

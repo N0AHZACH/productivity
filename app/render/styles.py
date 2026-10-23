@@ -41,13 +41,14 @@ def configure_document_styles(document: DocumentObject, theme: Theme) -> None:
     """Configure the named styles used by the renderer."""
     normal = document.styles["Normal"]
     _set_style_font(normal, theme.font_body, theme.body_pt)
-    normal.paragraph_format.line_spacing = 1.15
-    normal.paragraph_format.space_after = Pt(6)
+    normal.paragraph_format.line_spacing = 1.08
+    normal.paragraph_format.space_after = Pt(8)
+    normal.paragraph_format.widow_control = True
 
     heading_specs = {
         "Heading 1": (theme.h1_pt, 18, 8),
-        "Heading 2": (theme.h2_pt, 14, 6),
-        "Heading 3": (theme.h3_pt, 10, 4),
+        "Heading 2": (theme.h2_pt, 12, 5),
+        "Heading 3": (theme.h3_pt, 9, 4),
     }
     for name, (size, before, after) in heading_specs.items():
         style = document.styles[name]
@@ -57,7 +58,8 @@ def configure_document_styles(document: DocumentObject, theme: Theme) -> None:
         style.paragraph_format.space_before = Pt(before)
         style.paragraph_format.space_after = Pt(after)
         style.paragraph_format.keep_with_next = True
-        style.paragraph_format.line_spacing = 1.05
+        style.paragraph_format.line_spacing = 1.0
+        style.paragraph_format.widow_control = True
 
     heading_four = document.styles["Heading 4"]
     _set_style_font(heading_four, theme.font_heading, theme.body_pt)
@@ -172,6 +174,7 @@ def _add_field(paragraph: Paragraph, instruction: str, placeholder: str = "1") -
     run = paragraph.add_run()
     begin = OxmlElement("w:fldChar")
     begin.set(qn("w:fldCharType"), "begin")
+    begin.set(qn("w:dirty"), "true")
     instr = OxmlElement("w:instrText")
     instr.set(qn("xml:space"), "preserve")
     instr.text = f" {instruction} "
@@ -197,7 +200,23 @@ def add_page_count_field(paragraph: Paragraph) -> None:
 
 def add_toc_field(paragraph: Paragraph) -> None:
     """Add a Word table-of-contents field covering headings 1 and 2."""
-    _add_field(paragraph, r' TOC \o "1-2" \h \z \u ', "")
+    _add_field(paragraph, r'TOC \o "1-3" \h \z \u', "Updating contents…")
+
+
+def add_page_ref_field(paragraph: Paragraph, bookmark: str, placeholder: str = "—") -> None:
+    """Append a PAGEREF field that resolves to a bookmarked heading's page."""
+    _add_field(paragraph, f"PAGEREF {bookmark} \\h", placeholder)
+
+
+def add_bookmark(paragraph: Paragraph, name: str, bookmark_id: int) -> None:
+    """Wrap a heading with a bookmark so TOC page references can update."""
+    start = OxmlElement("w:bookmarkStart")
+    start.set(qn("w:id"), str(bookmark_id))
+    start.set(qn("w:name"), name)
+    end = OxmlElement("w:bookmarkEnd")
+    end.set(qn("w:id"), str(bookmark_id))
+    paragraph._p.insert(0, start)
+    paragraph._p.append(end)
 
 
 def repeat_table_header(row: _Row) -> None:

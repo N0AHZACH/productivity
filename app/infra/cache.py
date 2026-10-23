@@ -9,7 +9,7 @@ from typing import Any
 
 from app.core.config import Settings
 from app.models.plan import TaskList
-from app.models.state import Analysis
+from app.models.state import AgentState, Analysis
 from app.tools.registry import ToolRegistry
 
 CACHE_VERSION = "m10-1"
@@ -44,12 +44,26 @@ def plan_cache_key(
     return f"plan:{_digest('|'.join(parts))}"
 
 
+def hot_run_cache_key(request: str) -> str:
+    """Return a stable key for a completed demo run."""
+    normalized = " ".join(request.split()).casefold()
+    return f"hot:{_digest(f'{CACHE_VERSION}|{normalized}')}"
+
+
 @dataclass(frozen=True)
 class CachedPlan:
     """A validated plan plus the source that produced it."""
 
     plan: TaskList
     source: str
+
+
+@dataclass(frozen=True)
+class HotRunSnapshot:
+    """A completed state and rendered file that can be replayed instantly."""
+
+    state: AgentState
+    document: bytes
 
 
 class InMemoryTTLCache:

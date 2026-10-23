@@ -171,8 +171,9 @@ async def test_standard_request_end_to_end(tmp_path: Path) -> None:
 
     assert payload["status"] == "completed"
     assert payload["plan_source"] == "llm"
+    assert "fake" in payload["plan_source_detail"].lower()
     assert payload["document_url"] == f"/documents/{payload['run_id']}"
-    assert payload["filename"] == f"{payload['run_id']}.docx"
+    assert payload["filename"].endswith(f"-{payload['run_id'][:8]}.docx")
     assert all(report["passed"] for report in payload["reflection"])
     assert not any(call.schema is CriticReview for call in llm.calls)
     stages = {event["stage"] for event in payload["trace"]}
@@ -181,6 +182,7 @@ async def test_standard_request_end_to_end(tmp_path: Path) -> None:
     assert all(task["status"] == TaskStatus.DONE for task in payload["plan"]["tasks"])
 
     assert download.status_code == 200
+    assert payload["filename"] in download.headers["content-disposition"]
     assert download.headers["content-type"].startswith(
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
@@ -190,7 +192,7 @@ async def test_standard_request_end_to_end(tmp_path: Path) -> None:
     assert "Executive Summary" in text
     assert "Budget and Resourcing" in text
     assert "USD" in text
-    assert (tmp_path / "documents" / payload["filename"]).read_bytes() == download.content
+    assert (tmp_path / "documents" / f"{payload['run_id']}.docx").read_bytes() == download.content
 
 
 @pytest.mark.asyncio
@@ -255,6 +257,35 @@ async def test_document_download_404_and_api_key_auth(tmp_path: Path) -> None:
     assert missing.status_code == 404
     assert missing.json()["error"]["code"] == "NOT_FOUND"
     assert health.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_exact_repeat_uses_hot_cache_and_keeps_readable_filename(tmp_path: Path) -> None:
+    analysis = _standard_analysis()
+    composition = CompositionDraft(
+        title="Customer Support Chatbot Project Plan",
+        subtitle="Twelve-week assisted launch",
+        executive_summary="The plan launches a focused assisted support pilot.",
+    )
+    llm = _fake_llm(analysis, composition)
+    app = _app(tmp_path, llm)
+    transport = httpx.ASGITransport(app=app)
+    request = {
+        "request": "Write a project plan for a support chatbot pilot with a budget and risks."
+    }
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/agent", json=request)
+        calls_after_first = len(llm.calls)
+        second = await client.post("/agent", json=request)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    second_payload = second.json()
+    assert second_payload["filename"].startswith("customer-support-chatbot-project-plan-")
+    assert second_payload["filename"].endswith(f"-{second_payload['run_id'][:8]}.docx")
+    assert any(event["data"].get("hot_cache") for event in second_payload["trace"])
+    assert len(llm.calls) == calls_after_first
 
 
 @pytest.mark.asyncio
@@ -406,7 +437,7 @@ async def test_background_run_streams_sse_and_replays_history(tmp_path: Path) ->
         )
         assert completed["data"]["status"] == "completed"
         assert completed["data"]["document_url"] == f"/documents/{handle['run_id']}"
-        assert completed["data"]["filename"] == f"{handle['run_id']}.docx"
+        assert completed["data"]["filename"].endswith(f"-{handle['run_id'][:8]}.docx")
         assert completed["data"]["plan_source"] == "llm"
         assert completed["data"]["reflection_passed"] is True
         assert completed["data"]["warning_items"] == []

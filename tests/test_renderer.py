@@ -4,7 +4,8 @@ import re
 from io import BytesIO
 
 import pytest
-from docx import Document
+from docx import Document as document_factory
+from docx.document import Document as DocumentObject
 from pydantic import ValidationError
 
 from app.models.common import DocType
@@ -62,10 +63,10 @@ def _spec() -> DocumentSpec:
     )
 
 
-def _render(spec: DocumentSpec) -> tuple[Document, bytes]:
+def _render(spec: DocumentSpec) -> tuple[DocumentObject, bytes]:
     theme = Theme(footer_text="Productivity Confidential")
     data = DocxRenderer(theme).render(spec)
-    return Document(BytesIO(data)), data
+    return document_factory(BytesIO(data)), data
 
 
 def test_renderer_produces_ordered_headings_and_cover() -> None:
@@ -78,7 +79,8 @@ def test_renderer_produces_ordered_headings_and_cover() -> None:
     headings = [
         paragraph.text
         for paragraph in document.paragraphs
-        if paragraph.style.name in {"Heading 1", "Heading 2", "Heading 3", "Heading 4"}
+        if paragraph.style is not None
+        and paragraph.style.name in {"Heading 1", "Heading 2", "Heading 3", "Heading 4"}
     ]
     assert headings == [
         "Assumptions and Open Questions",
@@ -111,6 +113,8 @@ def test_table_shape_and_header_furniture() -> None:
 def test_document_contains_toc_field_and_repeating_header() -> None:
     document, _ = _render(_spec())
     assert "TOC" in document.element.xml
+    assert "PAGEREF bookmark_" in document.element.xml
+    assert "bookmarkStart" in document.element.xml
     content_table = next(
         table
         for table in document.tables

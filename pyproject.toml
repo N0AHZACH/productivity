@@ -7,7 +7,7 @@ name = "docpilot"
 version = "0.1.0"
 description = "Autonomous, schema-driven business document agent"
 readme = "README.md"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.11,<3.14"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
@@ -27,6 +27,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "ruff>=0.7",
     "mypy>=1.13",
+    "reportlab>=4.2",
 ]
 
 [tool.setuptools.packages.find]
@@ -62,4 +63,4 @@ warn_unused_ignores = true
 no_implicit_optional = true
 ignore_missing_imports = true
 check_untyped_defs = true
-exclude = ["scripts/"]
+exclude = ["scripts/", "build/", "dist/"]

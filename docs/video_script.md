@@ -159,7 +159,7 @@ reflection fact.*
 
 > "Finally, the validated block models go to a `python-docx` renderer: headings,
 > paragraphs, bullets, tables, and callouts. The file is stored by run ID and streamed
-> back. 150 tests run against a fake LLM, so the suite never touches the network, and
+> back. 151 tests run against a fake LLM, so the suite never touches the network, and
 > the same run ID appears in every structured log line."
 
 ---

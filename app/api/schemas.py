@@ -27,6 +27,7 @@ class AgentRunResponse(BaseModel):
     run_id: str
     status: RunStatus
     plan_source: str | None = None
+    plan_source_detail: str | None = None
     analysis: Analysis
     plan: TaskList
     assumptions: list[str] = Field(default_factory=list)
@@ -46,6 +47,7 @@ class AgentRunResponse(BaseModel):
             run_id=state.run_id,
             status=state.status,
             plan_source=state.plan_source,
+            plan_source_detail=state.plan_source_detail,
             analysis=state.analysis,
             plan=state.plan,
             assumptions=state.analysis.assumptions,
@@ -54,5 +56,5 @@ class AgentRunResponse(BaseModel):
             warnings=state.warnings,
             trace=state.trace,
             document_url=f"/documents/{state.run_id}",
-            filename=f"{state.run_id}.docx",
+            filename=state.document_filename or f"{state.run_id}.docx",
         )

@@ -8,14 +8,17 @@
   <style>
     :root {
       color-scheme: dark;
-      --black: #000000;
-      --ink: #f3efe6;
-      --dim: #c0bbb0;
-      --faint: #8d887f;
-      --rule: #2a2825;
-      --rule-2: #46433e;
-      --ok: #6ed49b;
-      --bad: #f0776d;
+      --black: #080a0d;
+      --surface: #10141a;
+      --surface-2: #151b24;
+      --ink: #f4f1e9;
+      --dim: #c4c9d2;
+      --faint: #8993a2;
+      --rule: #252c36;
+      --rule-2: #3a4655;
+      --accent: #b9d1ff;
+      --ok: #79dda8;
+      --bad: #ff8d86;
     }
 
     * { box-sizing: border-box; }
@@ -67,7 +70,11 @@
       text-transform: uppercase;
     }
 
-    .wordmark { color: var(--ink); }
+    .wordmark {
+      color: var(--ink);
+      font-size: 1.11rem;
+      letter-spacing: 0.12em;
+    }
 
     .topline-nav {
       display: flex;
@@ -228,6 +235,7 @@
       line-height: 1.45;
     }
 
+    .preset:hover { background: rgba(185, 209, 255, 0.06); }
     .preset:hover .preset-copy strong { text-decoration: underline; text-underline-offset: 3px; }
     .preset:hover .preset-copy span { color: var(--ink); }
 
@@ -289,14 +297,17 @@
 
     .primary {
       flex: 1;
-      background: var(--ink);
-      color: var(--black);
-      border: 1px solid var(--ink);
+      background: var(--accent);
+      color: #10141a;
+      border: 1px solid var(--accent);
+      box-shadow: 0 8px 26px rgba(117, 157, 226, 0.16);
     }
 
     .primary:hover:not(:disabled) {
-      background: transparent;
-      color: var(--ink);
+      background: var(--accent);
+      color: #10141a;
+      border-color: var(--accent);
+      box-shadow: 0 10px 30px rgba(117, 157, 226, 0.24);
     }
 
     .primary:disabled {
@@ -441,8 +452,13 @@
     }
 
     .panel {
-      padding: 30px 0 32px;
+      padding: 26px 24px 28px;
       border-bottom: 1px solid var(--rule);
+      border: 1px solid var(--rule);
+      border-radius: 10px;
+      background: var(--surface);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.14);
+      margin-bottom: 18px;
     }
 
     .panel-head { justify-content: flex-start; }
@@ -706,6 +722,18 @@
       text-transform: uppercase;
     }
 
+    .colophon a {
+      color: var(--dim);
+      text-decoration: none;
+      border-bottom: 1px solid transparent;
+      transition: color 120ms linear, border-color 120ms linear;
+    }
+
+    .colophon a:hover {
+      color: var(--ink);
+      border-bottom-color: var(--ink);
+    }
+
     @media (max-width: 1080px) {
       .sheet { width: calc(100% - 56px); }
       .grid { grid-template-columns: 1fr; }
@@ -918,8 +946,8 @@
 
     <footer class="colophon">
       <span>Productivity</span>
-      <span>Local demo / Microsoft Word output</span>
-      <span>Files written to data/documents</span>
+      <a href="https://www.linkedin.com/in/noahzach" target="_blank" rel="noreferrer">by Noah Zach with love</a>
+      <a href="https://github.com/N0AHZACH" target="_blank" rel="noreferrer">github.com/N0AHZACH</a>
     </footer>
   </div>
 
@@ -1226,9 +1254,10 @@
       el.traceList.scrollTop = el.traceList.scrollHeight;
     }
 
-    function setPlanSource(source, cached) {
+    function setPlanSource(source, cached, detail) {
       state.planSource = source || "unknown";
-      el.planSource.textContent = state.planSource + (cached ? " / cache" : "");
+      el.planSource.textContent = detail || state.planSource;
+      el.planSource.title = detail || state.planSource;
       el.planSource.className = "badge " + (state.planSource === "fallback" ? "skipped" : "done");
     }
 
@@ -1258,7 +1287,7 @@
       state.documentUrl = data.document_url || "";
       state.filename = data.filename || "document.docx";
       el.runId.textContent = state.runId || "unknown";
-      el.factPlanSource.textContent = data.plan_source || state.planSource || "-";
+      el.factPlanSource.textContent = data.plan_source_detail || data.plan_source || state.planSource || "-";
       const reflection = data.reflection_passed;
       el.factReflection.textContent =
         reflection === true ? "passed" : reflection === false ? "issues found" : "not run";
@@ -1283,7 +1312,10 @@
       state.apiIssue = warningIssue || "";
       setApiState(warningIssue ? "down" : "ready", warningIssue || "API ready");
       el.resultTitle.textContent = withWarnings ? "Document ready with warnings" : "Document ready";
-      el.resultSubtitle.textContent = "Run " + state.runId + " finished.";
+       el.resultSubtitle.textContent =
+         (state.filename || "Document") + " • " +
+         (data.plan_source_detail || data.plan_source || "agent run") +
+         (data.hot_cache ? " • hot-cache replay" : "");
       el.resultPanel.hidden = false;
       el.downloadBtn.disabled = !state.documentUrl;
       el.downloadBtn.textContent = state.documentUrl ? "Download .docx" : "No document";
@@ -1329,7 +1361,7 @@
       } else if (event.stage === "reconcile") {
         handleAnalysis(data);
       } else if (event.stage === "plan") {
-        setPlanSource(data.source, data.cached);
+        setPlanSource(data.source, data.cached, data.source_detail);
         if (Array.isArray(data.task_items)) renderPlan(data.task_items);
         setStatus("running", "Plan ready", "Executing " + (data.tasks || state.totalTasks) + " planned tasks.");
       } else if (event.stage === "task") {

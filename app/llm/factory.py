@@ -29,6 +29,7 @@ def _build_provider(
         reasoning_effort=settings.llm_reasoning_effort,
         min_interval_s=settings.llm_min_interval_s,
         usage_sink=usage_sink,
+        provider_name=provider,
     )
 
 

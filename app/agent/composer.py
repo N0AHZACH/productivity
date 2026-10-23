@@ -10,6 +10,7 @@ from app.agent.text_utils import title_tokens, titles_match
 from app.core.config import Settings
 from app.core.errors import LLMOutputInvalid, LLMProviderError, PlanInvalid
 from app.llm.base import LLMClient
+from app.llm.metadata import llm_label
 from app.models.common import TaskStatus
 from app.models.document import (
     Block,
@@ -220,6 +221,9 @@ async def compose(
             "date": date.today().isoformat(),
             "version": "1.0",
             "author": settings.default_author,
+            "planner": llm_label(llm, settings.planning_tier),
+            "writer": llm_label(llm, settings.writing_tier),
+            "composer": llm_label(llm, settings.composition_tier),
         },
         assumptions=list(assumption_text),
         sections=sections,

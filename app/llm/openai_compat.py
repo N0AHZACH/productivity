@@ -162,6 +162,7 @@ class OpenAICompatClient:
         min_interval_s: float = 0.0,
         usage_sink: UsageSink | None = None,
         client: Any | None = None,
+        provider_name: str = "openai-compatible",
     ) -> None:
         self._client: Any = client or AsyncOpenAI(
             base_url=base_url,
@@ -171,6 +172,7 @@ class OpenAICompatClient:
         )
         self.model_fast = model_fast
         self.model_strong = model_strong
+        self.provider_name = provider_name
         self.max_concurrency = max_concurrency
         self.max_retries = max(1, max_retries)
         self.supports_json_mode = supports_json_mode

@@ -1,6 +1,6 @@
 """Deterministic review checks and reflective repair-loop tests."""
 
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 
@@ -117,7 +117,9 @@ def _make_state(
     )
 
 
-def _settings(*, mode: str = "auto", loops: int = 2) -> Settings:
+def _settings(
+    *, mode: Literal["off", "auto", "always"] = "auto", loops: int = 2
+) -> Settings:
     return Settings(reflection_llm_mode=mode, max_reflection_loops=loops)
 
 

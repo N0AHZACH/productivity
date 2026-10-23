@@ -74,9 +74,11 @@ class AgentState(BaseModel):
     plan: TaskList | None = None
     spec: DocumentSpec | None = None
     plan_source: str | None = None
+    plan_source_detail: str | None = None
     reflection: list[ReflectionReport] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     trace: list[TraceEvent] = Field(default_factory=list)
     status: RunStatus = RunStatus.QUEUED
     document_path: str | None = None
+    document_filename: str | None = None
     created_at: datetime = Field(default_factory=_now)

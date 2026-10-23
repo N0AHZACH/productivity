@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     cache_enabled: bool = True
     cache_ttl_s: float = Field(default=3600.0, gt=0)
     cache_max_entries: int = Field(default=256, ge=1, le=10000)
+    hot_cache_enabled: bool = True
+    hot_cache_ttl_s: float = Field(default=86400.0, gt=0)
+    hot_cache_max_entries: int = Field(default=8, ge=1, le=64)
 
     @field_validator("fallback_provider", "llm_reasoning_effort", mode="before")
     @classmethod

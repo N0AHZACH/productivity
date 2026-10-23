@@ -47,7 +47,9 @@ def test_cache_returns_independent_copies() -> None:
     assert isinstance(cached, Analysis)
     cached.objective = "mutated"
     assert original.objective == "Launch a support chatbot."
-    assert cache.get("analysis").objective == "Launch a support chatbot."
+    cached_again = cache.get("analysis")
+    assert isinstance(cached_again, Analysis)
+    assert cached_again.objective == "Launch a support chatbot."
 
 
 def test_cache_expires_after_ttl(monkeypatch: pytest.MonkeyPatch) -> None:

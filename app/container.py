@@ -23,6 +23,7 @@ class Container:
     renderer: DocxRenderer
     filestore: FileStore
     cache: InMemoryTTLCache | None = None
+    hot_cache: InMemoryTTLCache | None = None
     event_bus: EventBus = field(default_factory=EventBus)
 
     def __post_init__(self) -> None:
@@ -30,6 +31,11 @@ class Container:
             self.cache = InMemoryTTLCache(
                 max_entries=self.settings.cache_max_entries,
                 ttl_s=self.settings.cache_ttl_s,
+            )
+        if self.hot_cache is None and self.settings.hot_cache_enabled:
+            self.hot_cache = InMemoryTTLCache(
+                max_entries=self.settings.hot_cache_max_entries,
+                ttl_s=self.settings.hot_cache_ttl_s,
             )
 
     @classmethod
